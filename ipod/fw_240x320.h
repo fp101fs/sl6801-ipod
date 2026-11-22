@@ -133,8 +133,13 @@ static inline lv_color_t lv_rgb(uint8_t r, uint8_t g, uint8_t b)
 }
 
 /* ---------------------------------------------------------------- Core LVGL functions */
-#define lv_mem_alloc FW_FN(0x00DAF4D0, void *, (size_t size))
-#define lv_mem_free  FW_FN(0x00DAF464, void, (void *p))
+typedef struct {
+    uint32_t total_size, free_cnt, free_size, free_biggest_size, used_cnt, max_used;
+    uint8_t used_pct, frag_pct;
+} lv_mem_monitor_t;
+#define lv_mem_alloc   FW_FN(0x00DAF4D0, void *, (size_t size))
+#define lv_mem_free    FW_FN(0x00DAF464, void, (void *p))
+#define lv_mem_monitor FW_FN(0x00DAF480, void, (lv_mem_monitor_t *mon))
 
 #define lv_disp_get_scr_act FW_FN(0x00D9E0A8, lv_obj_t *, (void *disp))
 #define lv_indev_get_act    FW_FN(0x00D9EAB0, void *, (void))

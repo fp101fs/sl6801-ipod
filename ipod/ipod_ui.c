@@ -56,8 +56,9 @@
 #define STEP_SLOW_RAD 0.38f
 #define STEP_MED_RAD  0.29f
 #define STEP_FAST_RAD 0.23f
-#define STEP_MIN_MS   22u
+#define STEP_MIN_MS      22u
 #define CLICK_STOP_MAGIC 0xFFFFFFFFu
+#define CLICK_IDLE_MAGIC 0xFFFFFFFEu
 
 /* ---------------------------------------------------------------- Fast FPU atan2f */
 static float fast_atan2f(float y, float x)
@@ -194,6 +195,14 @@ typedef struct {
     uint8_t last_glow;    /* 0=none, 1=top, 2=bot, 3=left, 4=right, 5=center */
     uint32_t open_ms;     /* timestamp for guaranteed slide-in completion */
     bool slide_done;
+
+    /* Deferred playback message (waits for ClickTask to close /dev/audio0 before FLAC/MP3 starts) */
+    bool pending_msg;
+    uint32_t pending_ms;
+    uint32_t pend_page;
+    uint32_t pend_type;
+    uint32_t pend_sub;
+    uint32_t pend_ev;
 
     /* Click wheel polar touch state */
     bool wheel_down;
@@ -460,6 +469,8 @@ static void update_list_colors(ipod_ui_t *ui, bool snap_pill)
     }
 }
 
+static void click_trigger(void);
+
 static void list_step(ipod_ui_t *ui, int dir, bool fast)
 {
     int n = count_valid_rows(ui->page_id);
@@ -494,12 +505,33 @@ static void list_step(ipod_ui_t *ui, int dir, bool fast)
     } else {
         ui->sel_idx = (int8_t)next;
     }
-    if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
-    else CLICK_SEQ++;
+    click_trigger();
     update_list_colors(ui, flipped);
 }
 
-/* ---------------------------------------------------------------- Click Wheel Tactile Glow */
+/* Signal ClickTask to close /dev/audio0 and defer view_send_msg until it is 100% closed */
+static void send_msg_after_click_close(ipod_ui_t *ui, uint32_t page, uint32_t type, uint32_t sub, uint32_t ev)
+{
+    uint32_t seq = CLICK_SEQ;
+    if (seq == 0u || seq == CLICK_IDLE_MAGIC) {
+        view_send_msg(page, type, sub, ev);
+        return;
+    }
+    CLICK_SEQ = CLICK_STOP_MAGIC;
+    ui->pending_msg = true;
+    ui->pending_ms = lv_tick_get();
+    ui->pend_page = page;
+    ui->pend_type = type;
+    ui->pend_sub = sub;
+    ui->pend_ev = ev;
+}
+
+static void click_trigger(void)
+{
+    uint32_t s = CLICK_SEQ;
+    if (s == CLICK_STOP_MAGIC || s == CLICK_IDLE_MAGIC || s >= 0xFFFFFFF0u) CLICK_SEQ = 1u;
+    else CLICK_SEQ = s + 1u;
+}
 static void show_quadrant_glow(ipod_ui_t *ui, uint8_t q)
 {
     if (q == ui->last_glow) return;
@@ -621,15 +653,13 @@ static void wheel_event_cb(lv_event_t *e)
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
                     show_quadrant_glow(ui, 0);
-                    if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
-                    else CLICK_SEQ++;
+                    click_trigger();
                     view_send_msg(4, 5, 2, 4); /* Next */
                 } else if (ui->accum_angle <= -1.10f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
                     show_quadrant_glow(ui, 0);
-                    if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
-                    else CLICK_SEQ++;
+                    click_trigger();
                     view_send_msg(4, 5, 0, 4); /* Prev */
                 }
             }
@@ -639,11 +669,10 @@ static void wheel_event_cb(lv_event_t *e)
         show_quadrant_glow(ui, 0);
 
         if (ui->wheel_in_center) {
-            CLICK_SEQ = CLICK_STOP_MAGIC; /* release /dev/audio0 immediately before playing */
             if (ui->is_play) {
                 view_send_msg(4, 1, 0, 0x14); /* Music Settings */
             } else {
-                view_send_msg(ui->page_id, 4, (uint32_t)ui->sel_idx, 4); /* Select item */
+                send_msg_after_click_close(ui, ui->page_id, 4, (uint32_t)ui->sel_idx, 4); /* Select item */
             }
         } else if (!ui->wheel_scrolled) {
             float tdx = (float)(ui->down_x - WHEEL_CX);
@@ -654,19 +683,17 @@ static void wheel_event_cb(lv_event_t *e)
                 if (tdy < 0.0f) {
                     view_send_msg(ui->page_id, 1, 0, 0x15); /* MENU (Back) */
                 } else {
-                    CLICK_SEQ = CLICK_STOP_MAGIC;
                     if (ui->is_play) {
-                        view_send_msg(4, 5, 1, 4); /* Now Playing: Play / Pause */
+                        send_msg_after_click_close(ui, 4, 5, 1, 4); /* Now Playing: Play / Pause */
                     } else {
                         /* Browse lists (Songs/Artists/Albums/Menu): play or enter selected item */
-                        view_send_msg(ui->page_id, 4, (uint32_t)ui->sel_idx, 4);
+                        send_msg_after_click_close(ui, ui->page_id, 4, (uint32_t)ui->sel_idx, 4);
                     }
                 }
             } else {
                 if (ui->is_play) {
-                    CLICK_SEQ = CLICK_STOP_MAGIC;
-                    if (tdx < 0.0f) view_send_msg(4, 5, 0, 4); /* Prev track */
-                    else            view_send_msg(4, 5, 2, 4); /* Next track */
+                    if (tdx < 0.0f) send_msg_after_click_close(ui, 4, 5, 0, 4); /* Prev track */
+                    else            send_msg_after_click_close(ui, 4, 5, 2, 4); /* Next track */
                 } else {
                     /* Browse lists: |<< moves selection UP, >>| moves selection DOWN */
                     list_step(ui, (tdx < 0.0f) ? -1 : +1, false);
@@ -685,8 +712,7 @@ static void row_tap_cb(lv_event_t *e)
         if (t == ui->row_lbl[i]) {
             ui->sel_idx = (int8_t)i;
             update_list_colors(ui, false);
-            CLICK_SEQ = CLICK_STOP_MAGIC;
-            view_send_msg(ui->page_id, 4, (uint32_t)i, 4);
+            send_msg_after_click_close(ui, ui->page_id, 4, (uint32_t)i, 4);
             break;
         }
     }
@@ -697,6 +723,15 @@ static void ipod_timer_cb(lv_timer_t *t)
 {
     ipod_ui_t *ui = (ipod_ui_t *)t->user_data;
     if (!ui) return;
+
+    /* Fire deferred playback message once ClickTask has closed /dev/audio0 (prevents FLAC race!) */
+    if (ui->pending_msg) {
+        if (CLICK_SEQ == CLICK_IDLE_MAGIC || (lv_tick_get() - ui->pending_ms) >= 150u) {
+            ui->pending_msg = false;
+            view_send_msg(ui->pend_page, ui->pend_type, ui->pend_sub, ui->pend_ev);
+            return;
+        }
+    }
 
     /* Guaranteed 180ms cubic ease-out slide-in completion (protects against stock page-pop lv_anim clears) */
     if (!ui->slide_done) {
@@ -1006,10 +1041,14 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
         ui->lbl_count = make_label(body, "1 of 1", lv_rgb(0x28, 0x2E, 0x36), LV_TEXT_ALIGN_LEFT);
         lv_obj_set_pos(ui->lbl_count, 8, 2);
 
-        /* 3D-tilted Album Art + Glossy Floor Reflection (62x72 direct RAM buffer w/ sheen) */
+        /* 3D-tilted Album Art + Glossy Floor Reflection (only allocate 5.5KB RAM buffer if LVGL heap has ample headroom) */
         ui->img_art = lv_img_create(body);
         lv_obj_set_pos(ui->img_art, 6, 17);
-        ui->art_buf = (uint8_t *)lv_mem_alloc(ALBUM_ART_BYTES);
+        lv_mem_monitor_t mon;
+        lv_mem_monitor(&mon);
+        if (mon.free_biggest_size >= 14336u) {
+            ui->art_buf = (uint8_t *)lv_mem_alloc(ALBUM_ART_BYTES);
+        }
         if (ui->art_buf) {
             rom_memcpy(ui->art_buf, img_album_default_map, ALBUM_ART_BYTES);
             ui->art_dsc.header = LV_IMG_HEADER(LV_IMG_CF_INDEXED_8BIT, ALBUM_ART_W, ALBUM_ART_H);
@@ -1031,10 +1070,13 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
         lv_obj_set_width(ui->lbl_artist, 140);
         lv_obj_set_pos(ui->lbl_artist, 76, 48);
 
-        /* 60 FPS Direct Pixel-Buffer Glossy Aqua Progress Bar (208x11) */
+        /* 60 FPS Direct Pixel-Buffer Glossy Aqua Progress Bar (208x11, 3.3KB RAM) */
         ui->img_bar = lv_img_create(body);
         lv_obj_set_pos(ui->img_bar, 8, 91);
-        ui->bar_buf = (uint8_t *)lv_mem_alloc(BAR_BUF_BYTES);
+        lv_mem_monitor(&mon);
+        if (mon.free_biggest_size >= 8192u) {
+            ui->bar_buf = (uint8_t *)lv_mem_alloc(BAR_BUF_BYTES);
+        }
         if (ui->bar_buf) {
             init_bar_palette(ui->bar_buf);
             ui->bar_dsc.header = LV_IMG_HEADER(LV_IMG_CF_INDEXED_8BIT, BAR_W, BAR_H);
@@ -1197,7 +1239,14 @@ static void click_audio_task(void *arg)
 
     for (;;) {
         uint32_t seq = CLICK_SEQ;
-        if (seq == last_seq || seq == CLICK_STOP_MAGIC) {
+        if (seq == CLICK_STOP_MAGIC) {
+            CLICK_SEQ = CLICK_IDLE_MAGIC;
+            last_seq = CLICK_IDLE_MAGIC;
+            /* Brief cooldown so FLAC/MP3 init can open /dev/audio0 without contention */
+            fw_os_sleep(350);
+            continue;
+        }
+        if (seq == last_seq || seq == CLICK_IDLE_MAGIC || seq == 0u) {
             last_seq = seq;
             fw_os_sleep(8);
             continue;
@@ -1222,13 +1271,14 @@ static void click_audio_task(void *arg)
          * Exits immediately if CLICK_STOP_MAGIC is signaled (user pressed Center/Play). */
         int pos = 0;
         int idle_periods = 0;
+        bool urgent_stop = false;
         while (idle_periods < 260) {
             uint32_t cur = CLICK_SEQ;
             if (cur == CLICK_STOP_MAGIC) {
-                last_seq = cur;
+                urgent_stop = true;
                 break;
             }
-            if (cur != last_seq) {
+            if (cur != last_seq && cur != CLICK_IDLE_MAGIC) {
                 last_seq = cur;
                 pos = 0;
                 idle_periods = 0;
@@ -1244,17 +1294,28 @@ static void click_audio_task(void *arg)
             fw_dev_write(dev, buf, 256, 0);
         }
 
-        /* Drain ring and close cleanly */
-        rom_memset(buf, 0, sizeof(buf));
-        for (int d = 0; d < 8; d++) fw_dev_write(dev, buf, 256, 0);
-        fw_os_sleep(50);
+        /* Drain ring and close cleanly; on urgent_stop close ASAP so FLAC never races /dev/audio0 */
+        if (!urgent_stop) {
+            rom_memset(buf, 0, sizeof(buf));
+            for (int d = 0; d < 6; d++) fw_dev_write(dev, buf, 256, 0);
+            fw_os_sleep(30);
+        } else {
+            fw_os_sleep(24);
+        }
         fw_dev_close(&dev);
+        CLICK_SEQ = CLICK_IDLE_MAGIC;
+        last_seq = CLICK_IDLE_MAGIC;
+        if (urgent_stop) {
+            /* Give CPU0 FLAC/MP3 decoder time to parse headers & claim /dev/audio0 */
+            fw_os_sleep(350);
+        }
     }
 }
 
 __attribute__((used)) void hook_cpu0_start(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 {
     fw_watchdog_setup(a, b, c, d);
-    CLICK_SEQ = 0;
-    fw_task_create(click_audio_task, NULL, "ClickTask", 6, 0x400);
+    CLICK_SEQ = CLICK_IDLE_MAGIC;
+    /* 0x280 words (2.5 KB) stack leaves extra CPU0 FreeRTOS heap headroom for FLAC decoding */
+    fw_task_create(click_audio_task, NULL, "ClickTask", 6, 0x280);
 }
