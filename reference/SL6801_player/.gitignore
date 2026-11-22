@@ -1,0 +1,43 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# SDK build output (sdk/build.py)
+sdk/build/
+sdk/apps/*/build/
+
+# Firmware images made by pack, readbacks and backups.
+/*.bin
+
+# Test videos and sound previews
+/*.avi
+/*.wav
+
+# Ghidra: project database, input copies and generated listings (rebuild with ghidra/import.sh)
+ghidra/project/
+ghidra/input/
+ghidra/out/
+*.gpr
+*.rep/
+*.lock
+*.lock~
+
+# Clone of github.com/ilyakurdyukov/smartlink_flash, built locally; our change is in patches/
+smartlink_flash/
+
+# Board photos contain GPS location in their EXIF data
+/PXL_*.jpg
+
+# Scratch files
+*.tmp
+*.log
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.claude/settings.local.json
+Thumbs.db
+desktop.ini
+.DS_Store

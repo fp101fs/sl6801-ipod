@@ -1,0 +1,19 @@
+[
+ {"bl_at": "0xd04aba", "target": "hook_music_play_create", "expect": "0xd12e64"},
+ {"bl_at": "0xd22496", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd226be", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd22bc8", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd22d54", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd22e86", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd232dc", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd23438", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd2386e", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd239de", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd23b08", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd23f6e", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd2410e", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd2428e", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd24884", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd249f0", "target": "hook_media_start", "expect": "0xd21800"},
+ {"bl_at": "0xd24b96", "target": "hook_media_start", "expect": "0xd21800"}
+]

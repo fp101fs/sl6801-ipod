@@ -1,0 +1,6 @@
+[
+ {"bl_at": "0xd04c04", "target": "hook_home_menu_create", "expect": "0xd0fc64"},
+ {"bl_at": "0xcdd5e6", "target": "hook_key_event", "expect": "0xcf09d4"},
+ {"bl_at": "0xcd9074", "target": "hook_view_alive", "expect": "0xd27c20"},
+ {"bl_at": "0xcd8c7a", "target": "hook_cpu0_start", "expect": "0xd27af0"}
+]

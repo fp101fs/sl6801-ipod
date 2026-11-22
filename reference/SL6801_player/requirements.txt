@@ -1,0 +1,3 @@
+pillow
+# only needed for sdk/build.py --zig
+ziglang
