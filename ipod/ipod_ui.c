@@ -550,7 +550,6 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     lv_obj_set_size(lcd, LCD_W, LCD_H);
     lv_obj_set_style_bg_color(lcd, lv_rgb(0xFF, 0xFF, 0xFF), 0);
     lv_obj_set_style_radius(lcd, 6, 0);
-    lv_obj_set_style_clip_corner(lcd, true, 0);
     lv_obj_set_style_border_width(lcd, 2, 0);
     lv_obj_set_style_border_color(lcd, lv_rgb(0x10, 0x14, 0x18), 0);
 
@@ -634,7 +633,6 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
         lv_obj_set_pos(bar_bg, 8, 90);
         lv_obj_set_size(bar_bg, BAR_W, 11);
         lv_obj_set_style_radius(bar_bg, 3, 0);
-        lv_obj_set_style_clip_corner(bar_bg, true, 0);
         lv_obj_set_style_bg_color(bar_bg, lv_rgb(0xE4, 0xE9, 0xEF), 0);
         lv_obj_set_style_bg_grad_color(bar_bg, lv_rgb(0xFA, 0xFC, 0xFF), 0);
         lv_obj_set_style_bg_grad_dir(bar_bg, LV_GRAD_DIR_VER, 0);
@@ -730,6 +728,7 @@ __attribute__((used)) int hook_music_play_create(void)
 {
     int ret = stock_page_music_play_create();
     if (ret == 0 && fw_music_play() && fw_music_play()->track_cnt) {
+        if (fw_music_play()->btn_set) lv_obj_add_flag(fw_music_play()->btn_set, LV_OBJ_FLAG_HIDDEN);
         build_ipod_shell(lv_obj_get_parent(fw_music_play()->track_cnt), 4, "Now Playing", true);
     }
     return ret;

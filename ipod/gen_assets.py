@@ -11,18 +11,34 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gen")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 
-def write_indexed8_header(img: Image.Image, path: str, sym: str) -> None:
-    pal_img = img.convert("RGB").quantize(colors=256, method=Image.Quantize.MEDIANCUT)
-    w, h = pal_img.size
-    raw_pal = pal_img.getpalette()  # 768 bytes R,G,B
-    pixels = bytes(pal_img.getdata())
+def write_indexed8_header(img: Image.Image, path: str, sym: str, transparent_bg: bool = False) -> None:
+    w, h = img.size
+    if transparent_bg:
+        rgba = img.convert("RGBA")
+        # Reserve palette index 0 for fully transparent; quantize opaque pixels to 255 colors
+        rgb_img = Image.new("RGB", (w, h), (40, 100, 164))
+        rgb_img.paste(rgba, mask=rgba.split()[3])
+        pal_img = rgb_img.quantize(colors=255, method=Image.Quantize.MEDIANCUT)
+        raw_pal = pal_img.getpalette()
+        alpha_data = list(rgba.getchannel("A").getdata())
+        idx_data = list(pal_img.getdata())
 
-    # LVGL LV_IMG_CF_INDEXED_8BIT: 256 * 4 bytes (B, G, R, A=0xFF) + w*h pixel indices
-    buf = bytearray()
-    for i in range(256):
-        r, g, b = raw_pal[i * 3 : i * 3 + 3]
-        buf += bytes((b, g, r, 0xFF))
-    buf += pixels
+        buf = bytearray()
+        buf += bytes((0, 0, 0, 0))  # index 0 = transparent
+        for i in range(255):
+            r, g, b = raw_pal[i * 3 : i * 3 + 3]
+            buf += bytes((b, g, r, 0xFF))
+        for a, idx in zip(alpha_data, idx_data):
+            buf.append(0 if a < 128 else (idx + 1))
+    else:
+        pal_img = img.convert("RGB").quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+        raw_pal = pal_img.getpalette()
+        pixels = bytes(pal_img.getdata())
+        buf = bytearray()
+        for i in range(256):
+            r, g, b = raw_pal[i * 3 : i * 3 + 3]
+            buf += bytes((b, g, r, 0xFF))
+        buf += pixels
 
     header_u32 = 10 | (w << 10) | (h << 21)  # LV_IMG_CF_INDEXED_8BIT = 10
     with open(path, "w") as f:
@@ -37,57 +53,48 @@ def write_indexed8_header(img: Image.Image, path: str, sym: str) -> None:
         f.write(f"  .data_size = {len(buf)}u,\n")
         f.write(f"  .data = {sym}_map,\n")
         f.write("};\n")
-    print(f"Generated {path} ({w}x{h}, {len(buf)} bytes)")
+    print(f"Generated {path} ({w}x{h}, {len(buf)} bytes, transparent={transparent_bg})")
 
 
 def make_clickwheel() -> Image.Image:
-    # Render at 4x (624x624) for buttery-smooth anti-aliasing, then downsample to 156x156
+    # Render at 4x (624x624) with transparent background outside wheel, then downsample to 156x156
     S = 4
     W, H = 156 * S, 156 * S
     cx, cy = W // 2, H // 2
-    img = Image.new("RGB", (W, H))
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     px = img.load()
-
-    # Background anodized blue gradient matching bottom housing (y=157..313 of 320)
-    for y in range(H):
-        t = y / (H - 1)
-        r = int(68 - 22 * t)
-        g = int(142 - 36 * t)
-        b = int(208 - 34 * t)
-        for x in range(W):
-            px[x, y] = (r, g, b)
-
     draw = ImageDraw.Draw(img)
 
     # Subtle outer bevel shadow around wheel
     r_out = 73 * S
     r_in = 25 * S
-    draw.ellipse((cx - r_out - 2 * S, cy - r_out - 1 * S, cx + r_out + 2 * S, cy + r_out + 3 * S), fill=(30, 82, 138))
+    draw.ellipse(
+        (cx - r_out - 2 * S, cy - r_out - 1 * S, cx + r_out + 2 * S, cy + r_out + 3 * S),
+        fill=(24, 72, 126, 255),
+    )
 
-    # Pure crisp white Click Wheel ring with tiny off-white inner shading
-    draw.ellipse((cx - r_out, cy - r_out, cx + r_out, cy + r_out), fill=(250, 251, 253))
-    draw.ellipse((cx - r_out + S, cy - r_out + S, cx + r_out - S, cy + r_out - S), fill=(255, 255, 255))
+    # Pure crisp white Click Wheel ring
+    draw.ellipse((cx - r_out, cy - r_out, cx + r_out, cy + r_out), fill=(248, 250, 252, 255))
+    draw.ellipse((cx - r_out + S, cy - r_out + S, cx + r_out - S, cy + r_out - S), fill=(255, 255, 255, 255))
 
     # Recessed anodized blue center button (matches photo!)
-    draw.ellipse((cx - r_in - S, cy - r_in - S, cx + r_in + S, cy + r_in + S), fill=(28, 76, 128))
+    draw.ellipse((cx - r_in - S, cy - r_in - S, cx + r_in + S, cy + r_in + S), fill=(28, 76, 128, 255))
     for y in range(cy - r_in, cy + r_in + 1):
         for x in range(cx - r_in, cx + r_in + 1):
             dx, dy = x - cx, y - cy
             d2 = dx * dx + dy * dy
             if d2 <= r_in * r_in:
-                # Subtle radial metallic sheen
                 nx = (dx + r_in * 0.3) / (r_in * 1.4)
                 ny = (dy + r_in * 0.3) / (r_in * 1.4)
                 rad = min(1.0, math.hypot(nx, ny))
                 r = int(max(24, min(110, 86 - 52 * rad)))
                 g = int(max(82, min(176, 158 - 64 * rad)))
                 b = int(max(142, min(226, 218 - 62 * rad)))
-                px[x, y] = (r, g, b)
+                px[x, y] = (r, g, b, 255)
 
-    # Crisp iPod light-gray markings (#B6BCC4)
-    lbl = (176, 182, 190)
+    # Crisp iPod light-gray markings
+    lbl = (176, 182, 190, 255)
 
-    # Top: "MENU"
     try:
         font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12 * S)
     except Exception:
@@ -96,19 +103,16 @@ def make_clickwheel() -> Image.Image:
     tw, th = tb[2] - tb[0], tb[3] - tb[1]
     draw.text((cx - tw // 2, cy - 58 * S - th // 2), "MENU", fill=lbl, font=font)
 
-    # Left: |<<  (bar + two left triangles)
     lx, ly = cx - 52 * S, cy
     draw.rectangle((lx - 9 * S, ly - 5 * S, lx - 7 * S, ly + 5 * S), fill=lbl)
     draw.polygon([(lx - 7 * S, ly), (lx + 1 * S, ly - 5 * S), (lx + 1 * S, ly + 5 * S)], fill=lbl)
     draw.polygon([(lx + 1 * S, ly), (lx + 9 * S, ly - 5 * S), (lx + 9 * S, ly + 5 * S)], fill=lbl)
 
-    # Right: >>|  (two right triangles + bar)
     rx, ry = cx + 52 * S, cy
     draw.polygon([(rx - 9 * S, ry - 5 * S), (rx - 9 * S, ry + 5 * S), (rx - 1 * S, ry)], fill=lbl)
     draw.polygon([(rx - 1 * S, ry - 5 * S), (rx - 1 * S, ry + 5 * S), (rx + 7 * S, ry)], fill=lbl)
     draw.rectangle((rx + 7 * S, ry - 5 * S, rx + 9 * S, ry + 5 * S), fill=lbl)
 
-    # Bottom: > || (play triangle + two pause bars)
     bx, by = cx, cy + 53 * S
     draw.polygon([(bx - 10 * S, by - 5 * S), (bx - 10 * S, by + 5 * S), (bx - 2 * S, by)], fill=lbl)
     draw.rectangle((bx + 2 * S, by - 5 * S, bx + 4 * S, by + 5 * S), fill=lbl)
@@ -148,5 +152,5 @@ def make_album_art() -> Image.Image:
 
 
 if __name__ == "__main__":
-    write_indexed8_header(make_clickwheel(), os.path.join(OUT_DIR, "clickwheel.h"), "img_clickwheel")
-    write_indexed8_header(make_album_art(), os.path.join(OUT_DIR, "album_default.h"), "img_album_default")
+    write_indexed8_header(make_clickwheel(), os.path.join(OUT_DIR, "clickwheel.h"), "img_clickwheel", transparent_bg=True)
+    write_indexed8_header(make_album_art(), os.path.join(OUT_DIR, "album_default.h"), "img_album_default", transparent_bg=False)
