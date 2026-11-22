@@ -179,7 +179,7 @@ def write_click_pcm_header(mp3_path: str, out_path: str) -> None:
     for s in clip:
         x = (s / peak) * 3.2
         y = math.tanh(x)
-        norm.append(max(-32767, min(32767, int(round(y * 31000.0)))))
+        norm.append(max(-32767, min(32767, int(round(y * 15500.0)))))
 
     with open(out_path, "w") as f:
         f.write("#pragma once\n#include <stdint.h>\n\n")

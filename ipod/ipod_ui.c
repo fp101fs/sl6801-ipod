@@ -396,7 +396,12 @@ static void wheel_event_cb(lv_event_t *e)
                     view_send_msg(ui->page_id, 1, 0, 0x15); /* MENU (Back) */
                 } else {
                     CLICK_SEQ = CLICK_STOP_MAGIC;
-                    view_send_msg(4, 5, 1, 4); /* Play / Pause */
+                    if (ui->is_play) {
+                        view_send_msg(4, 5, 1, 4); /* Now Playing: Play / Pause */
+                    } else {
+                        /* Browse lists (Songs/Artists/Albums/Menu): play or enter selected item */
+                        view_send_msg(ui->page_id, 4, (uint32_t)ui->sel_idx, 4);
+                    }
                 }
             } else {
                 CLICK_SEQ = CLICK_STOP_MAGIC;

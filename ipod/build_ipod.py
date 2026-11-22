@@ -122,8 +122,8 @@ def apply_apple_splash(patched: bytearray) -> None:
     bbox = im.getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox()
     if bbox:
         im = im.crop(bbox)
-    # Fit cleanly to max 112x136 preserving exact Apple logo aspect ratio
-    max_w, max_h = 112, 136
+    # Fit cleanly to max 56x68 (sleek authentic iPod Classic boot logo size) preserving aspect ratio
+    max_w, max_h = 56, 68
     scale = min(max_w / im.width, max_h / im.height)
     nw = max(1, int(round(im.width * scale)))
     nh = max(1, int(round(im.height * scale)))
