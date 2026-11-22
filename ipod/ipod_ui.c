@@ -52,11 +52,11 @@
 
 #define PI_F          3.14159265f
 #define TWO_PI_F      6.28318530f
-/* Authentic iPod Classic Click Wheel (96 raw counts/rev = 3.75 deg/count,
- * ~26 ticks/rev slow -> ~37 med -> ~48 fast with velocity acceleration) */
-#define STEP_SLOW_RAD 0.24f
-#define STEP_MED_RAD  0.17f
-#define STEP_FAST_RAD 0.13f
+/* Tight, light iPod Classic Click Wheel detents (~33 ticks/rev slow -> ~43 med -> ~55 fast) */
+#define STEP_SLOW_RAD 0.19f
+#define STEP_MED_RAD  0.145f
+#define STEP_FAST_RAD 0.115f
+#define STEP_MIN_MS   22u
 #define CLICK_STOP_MAGIC 0xFFFFFFFFu
 
 /* ---------------------------------------------------------------- Fast FPU atan2f */
@@ -192,6 +192,8 @@ typedef struct {
     lv_obj_t *ico_state;  /* baked INDEXED_4BIT header Play/Pause sprite */
     lv_timer_t *timer;    /* 16ms (60 FPS) animation & live sync timer */
     uint8_t last_glow;    /* 0=none, 1=top, 2=bot, 3=left, 4=right, 5=center */
+    uint32_t open_ms;     /* timestamp for guaranteed slide-in completion */
+    bool slide_done;
 
     /* Click wheel polar touch state */
     bool wheel_down;
@@ -201,6 +203,7 @@ typedef struct {
     float accum_angle;
     float ang_vel;
     uint32_t prev_tick_ms;
+    uint32_t last_step_ms;
     int16_t down_x;
     int16_t down_y;
 
@@ -518,6 +521,7 @@ static void wheel_event_cb(lv_event_t *e)
         ui->accum_angle = 0.0f;
         ui->ang_vel = 0.0f;
         ui->prev_tick_ms = lv_tick_get();
+        ui->last_step_ms = 0;
         ui->down_x = px;
         ui->down_y = py;
         ui->wheel_in_center = (r2 <= (float)(WHEEL_R_IN * WHEEL_R_IN));
@@ -539,41 +543,50 @@ static void wheel_event_cb(lv_event_t *e)
             ui->prev_angle = ang;
             ui->accum_angle += d;
 
-            /* Smooth angular velocity (rad/s) for authentic iPod acceleration */
+            /* Smooth angular velocity (rad/s) for light, responsive iPod acceleration */
             float inst_vel = (d < 0.0f ? -d : d) * 1000.0f / (float)dt_ms;
-            ui->ang_vel = ui->ang_vel * 0.6f + inst_vel * 0.4f;
+            ui->ang_vel = ui->ang_vel * 0.55f + inst_vel * 0.45f;
             float step_rad = STEP_SLOW_RAD;
             bool fast = false;
-            if (ui->ang_vel > 6.5f) {
+            if (ui->ang_vel > 5.8f) {
                 step_rad = STEP_FAST_RAD;
                 fast = true;
-            } else if (ui->ang_vel > 3.2f) {
+            } else if (ui->ang_vel > 2.8f) {
                 step_rad = STEP_MED_RAD;
             }
 
-            show_quadrant_glow(ui, point_to_quadrant(dx, dy, false));
-
             if (!ui->is_play) {
-                while (ui->accum_angle >= step_rad) {
-                    ui->accum_angle -= step_rad;
-                    ui->wheel_scrolled = true;
-                    list_step(ui, +1, fast);
-                }
-                while (ui->accum_angle <= -step_rad) {
-                    ui->accum_angle += step_rad;
-                    ui->wheel_scrolled = true;
-                    list_step(ui, -1, fast);
+                /* Pace to at most 1 smooth step per touch tick (>= 22ms) so sliding 3-4 items
+                 * glides cleanly and fires 2-4 crisp individual clicks with zero skipping. */
+                if ((now - ui->last_step_ms) >= STEP_MIN_MS) {
+                    if (ui->accum_angle >= step_rad) {
+                        ui->accum_angle -= step_rad;
+                        if (ui->accum_angle > step_rad * 1.5f) ui->accum_angle = step_rad * 1.5f;
+                        ui->wheel_scrolled = true;
+                        ui->last_step_ms = now;
+                        show_quadrant_glow(ui, 0);
+                        list_step(ui, +1, fast);
+                    } else if (ui->accum_angle <= -step_rad) {
+                        ui->accum_angle += step_rad;
+                        if (ui->accum_angle < -step_rad * 1.5f) ui->accum_angle = -step_rad * 1.5f;
+                        ui->wheel_scrolled = true;
+                        ui->last_step_ms = now;
+                        show_quadrant_glow(ui, 0);
+                        list_step(ui, -1, fast);
+                    }
                 }
             } else {
-                if (ui->accum_angle >= 0.60f) {
+                if (ui->accum_angle >= 0.55f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
+                    show_quadrant_glow(ui, 0);
                     if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
                     else CLICK_SEQ++;
                     view_send_msg(4, 5, 2, 4); /* Next */
-                } else if (ui->accum_angle <= -0.60f) {
+                } else if (ui->accum_angle <= -0.55f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
+                    show_quadrant_glow(ui, 0);
                     if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
                     else CLICK_SEQ++;
                     view_send_msg(4, 5, 0, 4); /* Prev */
@@ -609,9 +622,14 @@ static void wheel_event_cb(lv_event_t *e)
                     }
                 }
             } else {
-                CLICK_SEQ = CLICK_STOP_MAGIC;
-                if (tdx < 0.0f) view_send_msg(4, 5, 0, 4); /* Prev */
-                else            view_send_msg(4, 5, 2, 4); /* Next */
+                if (ui->is_play) {
+                    CLICK_SEQ = CLICK_STOP_MAGIC;
+                    if (tdx < 0.0f) view_send_msg(4, 5, 0, 4); /* Prev track */
+                    else            view_send_msg(4, 5, 2, 4); /* Next track */
+                } else {
+                    /* Browse lists: |<< moves selection UP, >>| moves selection DOWN */
+                    list_step(ui, (tdx < 0.0f) ? -1 : +1, false);
+                }
             }
         }
     }
@@ -638,6 +656,18 @@ static void ipod_timer_cb(lv_timer_t *t)
 {
     ipod_ui_t *ui = (ipod_ui_t *)t->user_data;
     if (!ui) return;
+
+    /* Guaranteed 180ms cubic ease-out slide-in completion (protects against stock page-pop lv_anim clears) */
+    if (!ui->slide_done) {
+        uint32_t dt = lv_tick_get() - ui->open_ms;
+        if (dt >= 180u) {
+            lv_obj_set_x(ui->lcd_body, 0);
+            ui->slide_done = true;
+        } else {
+            float u = 1.0f - ((float)dt / 180.0f);
+            lv_obj_set_x(ui->lcd_body, (lv_coord_t)(120.0f * u * u * u));
+        }
+    }
 
     if (ui->is_play) {
         stock_music_play_t *sp = fw_music_play();
@@ -768,14 +798,22 @@ static void ipod_timer_cb(lv_timer_t *t)
             }
         }
 
-        /* Sync 6 list row labels cleanly from hidden stock page */
+        /* Sync 6 list row labels cleanly from hidden stock page (strictly single-line for horizontal marquee) */
         ui->frame_div++;
         if ((ui->frame_div & 1u) == 1u) {
             for (int i = 0; i < ROW_COUNT; i++) {
                 const char *txt = lv_label_get_text_fast(get_stock_row_label(ui->page_id, i));
                 if (rom_strcmp(txt, ui->last_row[i]) != 0) {
-                    lv_label_set_text(ui->row_lbl[i], txt);
-                    bool has_txt = (txt[0] != '\0' && !(txt[0] == ' ' && txt[1] == '\0'));
+                    char clean[64];
+                    size_t j = 0;
+                    for (size_t k = 0; txt[k] && j + 1 < sizeof(clean); k++) {
+                        char c = txt[k];
+                        if (c == '\r' || c == '\n') c = ' ';
+                        clean[j++] = c;
+                    }
+                    clean[j] = '\0';
+                    lv_label_set_text(ui->row_lbl[i], clean);
+                    bool has_txt = (clean[0] != '\0' && !(clean[0] == ' ' && clean[1] == '\0'));
                     if (has_txt) lv_obj_clear_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
                     else         lv_obj_add_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
                     size_t n = rom_strlen(txt);
@@ -827,6 +865,7 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     rom_memset(ui, 0, sizeof(ipod_ui_t));
     ui->page_id = page_id;
     ui->is_play = is_play;
+    ui->open_ms = lv_tick_get();
     ui->last_pill_y = -1;
     ui->last_thumb_y = -1;
 
@@ -885,7 +924,7 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     lv_obj_t *body = lv_obj_create(lcd);
     ui->lcd_body = body;
     style_clean_box(body);
-    lv_obj_set_pos(body, BODY_W, HDR_H);
+    lv_obj_set_pos(body, 120, HDR_H);
     lv_obj_set_size(body, BODY_W, BODY_H);
     lv_obj_set_style_bg_color(body, lv_rgb(0xFF, 0xFF, 0xFF), 0);
 
@@ -894,7 +933,7 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     slide.var = body;
     slide.exec_cb = anim_set_x_cb;
     slide.path_cb = LV_ANIM_PATH_EASE_OUT;
-    slide.start_value = 180;
+    slide.start_value = 120;
     slide.end_value = 0;
     slide.time = 180;
     lv_anim_start(&slide);
@@ -981,14 +1020,16 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
         for (int i = 0; i < ROW_COUNT; i++) {
             lv_obj_t *lbl = make_label(body, "", lv_rgb(0x14, 0x18, 0x1F), LV_TEXT_ALIGN_LEFT);
             lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-            lv_obj_set_size(lbl, SCROLL_X - 24, ROW_H - 2);
-            lv_obj_set_pos(lbl, 7, (lv_coord_t)(i * ROW_H + 3));
+            /* Width-only (LV_SIZE_CONTENT height) prevents early truncation AND guarantees
+             * LV_LABEL_LONG_SCROLL_CIRCULAR always scrolls horizontally (never vertically). */
+            lv_obj_set_width(lbl, SCROLL_X - 20);
+            lv_obj_set_pos(lbl, 6, (lv_coord_t)(i * ROW_H + 3));
             lv_obj_add_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_add_event_cb(lbl, row_tap_cb, LV_EVENT_CLICKED, ui);
             ui->row_lbl[i] = lbl;
 
             lv_obj_t *ch = make_label(body, ">", lv_rgb(0x9A, 0xA4, 0xB2), LV_TEXT_ALIGN_RIGHT);
-            lv_obj_set_pos(ch, SCROLL_X - 15, (lv_coord_t)(i * ROW_H + 3));
+            lv_obj_set_pos(ch, SCROLL_X - 13, (lv_coord_t)(i * ROW_H + 3));
             ui->row_chev[i] = ch;
         }
         update_list_colors(ui, true);
@@ -1108,9 +1149,9 @@ static void click_audio_task(void *arg)
         void *dev = fw_dev_open("/dev/audio0", 0, params);
         if (!dev) continue;
 
-        /* 8 silent pre-roll periods (~46ms) so Class-D speaker amp wakes cleanly once */
+        /* 4 silent pre-roll periods (~23ms) so Class-D speaker amp wakes cleanly & responsively */
         rom_memset(buf, 0, sizeof(buf));
-        for (int pre = 0; pre < 8; pre++) {
+        for (int pre = 0; pre < 4; pre++) {
             fw_dev_write(dev, buf, 256, 0);
         }
 
