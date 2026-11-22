@@ -94,14 +94,14 @@ Parsed with `python3 reference/SL6801_player/tools/slfw.py firmware/sl6801_backu
 Built from [ipod/ipod_ui.c](ipod/ipod_ui.c) + [ipod/build_ipod.py](ipod/build_ipod.py) (compiled via `ziglang` for ARM Cortex-M4F Thumb-2 and injected into the 128 KB free cave at `0x019000`):
 
 - **Power-On Splash Screen:** Replaces the stock `welcome` banner (`0x0FDC8C`) with a tight-cropped **`55×68`** Apple logo ([assets/splash.png](assets/splash.png)) centered on pure `#000000` black.
-- **60 FPS Blue iPod Classic UI (v2) + Polar-Angle Touch Click Wheel:** Replaces all 5 music screens (`Music`, `Songs`, `Now Playing`, `Artists`, `Albums`) with an anodized blue iPod shell, crisp white LCD, silver brushed header, and transparent 4× anti-aliased Click Wheel powered by a `16 ms` (60 FPS) timer + Cortex-M4F FPU:
-  - **Silky `lv_anim` Page Transitions:** Uses LVGL 8.3's built-in `lv_anim_init` / `lv_anim_start` / `lv_anim_path_ease_out` (`0x00DAE15E`) for smooth `180 ms` horizontal slide transitions.
-  - **60 FPS Browse List Physics:** Critically damped spring-interpolated Aqua blue highlight bar (snapping cleanly on page flips) + classic iPod right-edge recessed scrollbar & smooth Aqua thumb + marquee-scrolling selected row.
+- **60 FPS Blue iPod Classic UI (v2.1) + Polar-Angle Touch Click Wheel:** Replaces all 5 music screens (`Music`, `Songs`, `Now Playing`, `Artists`, `Albums`) with an anodized blue iPod shell, crisp white LCD, silver brushed header, and transparent 4× anti-aliased Click Wheel powered by a `10 ms` browse / `16 ms` Now Playing timer + Cortex-M4F FPU:
+  - **Silky `lv_anim` Page Transitions:** Uses LVGL 8.3's built-in `lv_anim_init` / `lv_anim_start` / `lv_anim_path_ease_out` (`0x00DAE15E`) with a 60 FPS completion guard for smooth `180 ms` horizontal slide transitions.
+  - **60 FPS Browse List Physics:** Time-based `115 ms` cubic ease-out Aqua blue highlight bar glide (pausing marquee & text-sync overhead during the glide, flipping row text to white only once covered ≥ 60%, and snapping cleanly on page flips) + classic iPod right-edge recessed scrollbar & smooth Aqua thumb + horizontal-only marquee-scrolling selected row.
   - **60 FPS Direct Pixel-Buffer Now Playing:** `62×72` 3D-perspective-tilted Album Art with glossy floor reflection and animated diagonal glass sheen (`rom_sinf`), plus a `208×11` real-time glossy Aqua progress bar with sub-pixel interpolation and animated specular shimmer (`3:41` / `-1:20` timestamps and `6 of 15` track counter).
   - **Baked `INDEXED_4BIT` Sprite Sheet:** Crisp 4× supersampled Play (`▶`) / Pause (`❚❚`) live header status sprites, classic glossy green Battery sprite, and 5 Click Wheel quadrant tactile press glow sprites (`MENU`, `|<<`, `>>|`, `>||`, Center).
 - **Authentic Click Wheel Mechanics:** Smooth, paced polar scrolling (~16.5 ticks/rev slow → ~22 med → ~27 fast, 22 ms anti-skip pacing for crisp per-item clicks); `MENU` goes back, `|<<`/`>>|` skips tracks on Now Playing or moves selection up/down on browse lists, Center selects (or opens Settings on Now Playing), and `>||` toggles Play/Pause on Now Playing or plays/enters the highlighted item on browse lists.
 - **Click Wheel Audio:** Plays [assets/clickwheel.mp3](assets/clickwheel.mp3) (44.1 kHz soft-limited PCM, `peak=7724`, via CPU0 `ClickTask` hooked at `fw_watchdog_setup` `0x00D4E866`, with 23 ms Class-D amp pre-roll and 1.5 s keep-alive to prevent mid-spin amp pops, releasing `/dev/audio0` immediately on Play/Select).
-- **Current Build Checksum:** `firmware/sl6801_ipod.bin` — `FIRM CRC16: 0x7EA9` (45.4 KB injected code & assets + 4.7 KB Apple boot logo inside the 128 KB free cave).
+- **Current Build Checksum:** `firmware/sl6801_ipod.bin` — **`v2.1`**, `FIRM CRC16: 0x46EA` (45.7 KB injected code & assets + 4.7 KB Apple boot logo inside the 128 KB free cave).
 - **Touch Sensitivity Patch (`firmware/sl6801_sensitive.bin` & baked into `sl6801_ipod.bin`):**
   1. **`0x1BD560` (`drv_tp_open`):** Writes **I2C `0x38` reg `0x80 = 0x10`** (softer CST726 touch threshold).
   2. **`0x1BD5EC` (`drv_tp_ioctl` wake):** Re-applies `reg 0x80 = 0x10` on every screen wake.
@@ -146,7 +146,7 @@ sl6801-ipod/
 │   └── sl6801_ipod.bin          # Full Blue iPod Classic + Click Wheel + Apple splash firmware
 ├── ipod/
 │   ├── fw_240x320.h             # Verified LVGL 8.3 / lv_anim / ROM math / OS / Presenter symbol map
-│   ├── ipod_ui.c                # 60 FPS Blue iPod Classic UI (v2) + Polar Click Wheel + CPU0 ClickTask
+│   ├── ipod_ui.c                # 60 FPS Blue iPod Classic UI (v2.1) + Polar Click Wheel + CPU0 ClickTask
 │   ├── ipod.ld                  # Linker script targeting 128 KB free cave (0x00C19000)
 │   ├── gen_assets.py            # 4x supersampled Click Wheel, 3D Album Art, INDEXED_4BIT sprites & 44.1 kHz PCM
 │   └── build_ipod.py            # End-to-end Zig Cortex-M4F build, patch & CRC16 script
