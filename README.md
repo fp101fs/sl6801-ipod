@@ -93,9 +93,10 @@ Parsed with `python3 reference/SL6801_player/tools/slfw.py firmware/sl6801_backu
 
 Built from [ipod/ipod_ui.c](ipod/ipod_ui.c) + [ipod/build_ipod.py](ipod/build_ipod.py) (compiled via `ziglang` for ARM Cortex-M4F Thumb-2 and injected into the 128 KB free cave at `0x019000`):
 
-- **Power-On Splash Screen:** Replaces the stock `welcome` banner (`0x0FDC8C`) with the centered Apple logo ([assets/splash.png](assets/splash.png)) on a pure black background.
-- **Blue iPod Classic UI + Polar-Angle Touch Click Wheel:** Replaces all 5 music screens (`Music`, `Songs`, `Now Playing`, `Artists`, `Albums`) with an anodized blue iPod shell, crisp white LCD, silver brushed header, green battery icon, glossy Aqua blue progress bar, and transparent 4× anti-aliased Click Wheel.
-- **Click Wheel Audio:** Plays [assets/clickwheel.mp3](assets/clickwheel.mp3) (44.1 kHz PCM via CPU0 `ClickTask` hooked at `fw_watchdog_setup` `0x00D4E866`) when turning the wheel.
+- **Power-On Splash Screen:** Replaces the stock `welcome` banner (`0x0FDC8C`) with a tight-cropped **`55×68`** Apple logo ([assets/splash.png](assets/splash.png)) centered on pure `#000000` black.
+- **Blue iPod Classic UI + Polar-Angle Touch Click Wheel:** Replaces all 5 music screens (`Music`, `Songs`, `Now Playing`, `Artists`, `Albums`) with an anodized blue iPod shell, crisp white LCD, silver brushed header, green battery icon, glossy Aqua blue progress bar, marquee-scrolling selected row, and transparent 4× anti-aliased Click Wheel.
+- **Authentic Click Wheel Mechanics:** Velocity-accelerated polar scrolling (~26 ticks/rev slow → ~37 medium → ~48 fast); `MENU` goes back, `|<<`/`>>|` skips tracks, Center selects (or opens Settings on Now Playing), and `>||` toggles Play/Pause on Now Playing or plays/enters the highlighted item on browse lists.
+- **Click Wheel Audio:** Plays [assets/clickwheel.mp3](assets/clickwheel.mp3) (44.1 kHz soft-limited PCM via CPU0 `ClickTask` hooked at `fw_watchdog_setup` `0x00D4E866`, with 46 ms Class-D amp pre-roll and 1.5 s keep-alive to prevent mid-spin amp pops, releasing `/dev/audio0` immediately on Play/Select).
 - **Touch Sensitivity Patch (`firmware/sl6801_sensitive.bin` & baked into `sl6801_ipod.bin`):**
   1. **`0x1BD560` (`drv_tp_open`):** Writes **I2C `0x38` reg `0x80 = 0x10`** (softer CST726 touch threshold).
   2. **`0x1BD5EC` (`drv_tp_ioctl` wake):** Re-applies `reg 0x80 = 0x10` on every screen wake.
@@ -131,13 +132,24 @@ Built from [ipod/ipod_ui.c](ipod/ipod_ui.c) + [ipod/build_ipod.py](ipod/build_ip
 
 ```
 sl6801-ipod/
+├── assets/
+│   ├── clickwheel.mp3           # iPod Classic click wheel sound effect
+│   └── splash.png               # Apple power-on boot logo
 ├── firmware/
 │   ├── sl6801_backup.bin        # Untouched 2 MB stock firmware dump
-│   └── sl6801_sensitive.bin     # Touch-sensitivity patched firmware
+│   ├── sl6801_sensitive.bin     # Touch-sensitivity patched firmware
+│   └── sl6801_ipod.bin          # Full Blue iPod Classic + Click Wheel + Apple splash firmware
+├── ipod/
+│   ├── fw_240x320.h             # Verified LVGL 8.3 / ROM / OS / Presenter symbol map
+│   ├── ipod_ui.c                # Blue iPod Classic UI + Polar Click Wheel + CPU0 ClickTask
+│   ├── ipod.ld                  # Linker script targeting 128 KB free cave (0x00C19000)
+│   ├── gen_assets.py            # 4x supersampled Click Wheel, Album Art & 44.1 kHz PCM generator
+│   └── build_ipod.py            # End-to-end Zig Cortex-M4F build, patch & CRC16 script
 ├── scripts/
-│   ├── patch_sensitivity.py     # Reproducible touch-sensitivity patcher
-│   ├── flash_sensitive.sh       # Flash only the 3 patched sectors
-│   └── flash_restore.sh         # Restore stock firmware
+│   ├── patch_sensitivity.py     # Standalone touch-sensitivity patcher
+│   ├── flash_ipod.sh            # Flash & verify sl6801_ipod.bin
+│   ├── flash_sensitive.sh       # Flash touch-sensitivity patch only
+│   └── flash_restore.sh         # Restore & verify untouched stock firmware
 ├── smartlink_flash/             # ilyakurdyukov/smartlink_flash (built for macOS)
 ├── reference/
 │   └── SL6801_player/           # dbrant/SL6801_player (MIT) tools & SDK reference
