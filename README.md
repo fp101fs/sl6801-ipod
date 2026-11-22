@@ -101,7 +101,7 @@ Built from [ipod/ipod_ui.c](ipod/ipod_ui.c) + [ipod/build_ipod.py](ipod/build_ip
   - **Baked `INDEXED_4BIT` Sprite Sheet:** Crisp 4× supersampled Play (`▶`) / Pause (`❚❚`) live header status sprites, classic glossy green Battery sprite, and 5 Click Wheel quadrant tactile press glow sprites (`MENU`, `|<<`, `>>|`, `>||`, Center).
 - **Authentic Click Wheel Mechanics:** Tight, light, paced polar scrolling (~33 ticks/rev slow → ~43 med → ~55 fast, 22 ms anti-skip pacing for crisp per-item clicks); `MENU` goes back, `|<<`/`>>|` skips tracks on Now Playing or moves selection up/down on browse lists, Center selects (or opens Settings on Now Playing), and `>||` toggles Play/Pause on Now Playing or plays/enters the highlighted item on browse lists.
 - **Click Wheel Audio:** Plays [assets/clickwheel.mp3](assets/clickwheel.mp3) (44.1 kHz soft-limited PCM, `peak=15449`, via CPU0 `ClickTask` hooked at `fw_watchdog_setup` `0x00D4E866`, with 23 ms Class-D amp pre-roll and 1.5 s keep-alive to prevent mid-spin amp pops, releasing `/dev/audio0` immediately on Play/Select).
-- **Current Build Checksum:** `firmware/sl6801_ipod.bin` — `FIRM CRC16: 0x5833` (45.3 KB injected code & assets + 4.7 KB Apple boot logo inside the 128 KB free cave).
+- **Current Build Checksum:** `firmware/sl6801_ipod.bin` — `FIRM CRC16: 0x33C6` (45.4 KB injected code & assets + 4.7 KB Apple boot logo inside the 128 KB free cave).
 - **Touch Sensitivity Patch (`firmware/sl6801_sensitive.bin` & baked into `sl6801_ipod.bin`):**
   1. **`0x1BD560` (`drv_tp_open`):** Writes **I2C `0x38` reg `0x80 = 0x10`** (softer CST726 touch threshold).
   2. **`0x1BD5EC` (`drv_tp_ioctl` wake):** Re-applies `reg 0x80 = 0x10` on every screen wake.

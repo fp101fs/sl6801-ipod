@@ -236,6 +236,7 @@ typedef struct {
     lv_obj_t *row_lbl[ROW_COUNT];
     lv_obj_t *row_chev[ROW_COUNT];
     int8_t sel_idx;
+    int8_t vis_idx;         /* row currently covered >=60% by sel_pill (-1 while transitioning) */
     float pill_y;           /* spring-interpolated Y coordinate */
     int16_t last_pill_y;
     int16_t last_thumb_y;
@@ -395,11 +396,23 @@ static int count_valid_rows(uint8_t page_id)
     return cnt > 0 ? cnt : ROW_COUNT;
 }
 
-static void update_list_colors(ipod_ui_t *ui, bool snap_pill)
+static void apply_row_colors(ipod_ui_t *ui, int8_t vis)
 {
+    if (vis == ui->vis_idx) return;
+    ui->vis_idx = vis;
     lv_color_t white = lv_rgb(0xFF, 0xFF, 0xFF);
     lv_color_t dark  = lv_rgb(0x14, 0x18, 0x1F);
     lv_color_t gray  = lv_rgb(0x9A, 0xA4, 0xB2);
+    for (int i = 0; i < ROW_COUNT; i++) {
+        bool sel = (i == vis);
+        lv_obj_set_style_text_color(ui->row_lbl[i], sel ? white : dark, 0);
+        lv_obj_set_style_text_color(ui->row_chev[i], sel ? white : gray, 0);
+        lv_label_set_long_mode(ui->row_lbl[i], sel ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_DOT);
+    }
+}
+
+static void update_list_colors(ipod_ui_t *ui, bool snap_pill)
+{
     if (snap_pill) {
         int16_t ty = (int16_t)(ui->sel_idx * ROW_H + 2);
         ui->pill_y = (float)ty;
@@ -410,12 +423,7 @@ static void update_list_colors(ipod_ui_t *ui, bool snap_pill)
             ui->last_thumb_y = sy;
             lv_obj_set_y(ui->scroll_thumb, sy);
         }
-    }
-    for (int i = 0; i < ROW_COUNT; i++) {
-        bool sel = (i == ui->sel_idx);
-        lv_obj_set_style_text_color(ui->row_lbl[i], sel ? white : dark, 0);
-        lv_obj_set_style_text_color(ui->row_chev[i], sel ? white : gray, 0);
-        lv_label_set_long_mode(ui->row_lbl[i], sel ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_DOT);
+        apply_row_colors(ui, ui->sel_idx);
     }
 }
 
@@ -786,6 +794,18 @@ static void ipod_timer_cb(lv_timer_t *t)
             ui->last_pill_y = iy;
             lv_obj_set_y(ui->sel_pill, iy);
         }
+        /* Only flip a row's text to white once the blue highlight pill covers >=60% of it */
+        int8_t vis = -1;
+        float py_rel = ui->pill_y - 2.0f;
+        for (int i = 0; i < ROW_COUNT; i++) {
+            float d = py_rel - (float)(i * ROW_H);
+            if (d < 0.0f) d = -d;
+            if (d <= (float)ROW_H * 0.40f) {
+                vis = (int8_t)i;
+                break;
+            }
+        }
+        apply_row_colors(ui, vis);
         if (ui->scroll_thumb) {
             float max_pill = (float)((ROW_COUNT - 1) * ROW_H);
             float frac = (ui->pill_y - 2.0f) / (max_pill > 1.0f ? max_pill : 1.0f);
@@ -866,6 +886,7 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     ui->page_id = page_id;
     ui->is_play = is_play;
     ui->open_ms = lv_tick_get();
+    ui->vis_idx = -1;
     ui->last_pill_y = -1;
     ui->last_thumb_y = -1;
 
