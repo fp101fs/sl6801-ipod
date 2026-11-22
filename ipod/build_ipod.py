@@ -119,7 +119,7 @@ def apply_apple_splash(patched: bytearray) -> None:
         return
 
     im = Image.open(splash_path).convert("RGBA")
-    bbox = im.getbbox()
+    bbox = im.getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox()
     if bbox:
         im = im.crop(bbox)
     # Fit cleanly to max 112x136 preserving exact Apple logo aspect ratio
