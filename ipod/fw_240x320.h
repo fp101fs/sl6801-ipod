@@ -189,7 +189,7 @@ static inline int32_t lv_bar_get_max_fast(lv_obj_t *bar)
 
 #define fw_os_sleep    FW_FN(0x00D4E2A4, void, (uint32_t ms))
 #define fw_task_create FW_FN(0x00D4E494, void *, (void (*entry)(void *), void *arg, const char *name, int prio, uint32_t stack))
-#define stock_view_start FW_FN(0x00D97690, void, (void *arg))
+#define fw_watchdog_setup FW_FN(0x00D9DD10, void, (uint32_t a, uint32_t b, uint32_t c, uint32_t d))
 
 /* Reserved Cortex-M vector slot in RAM used as lock-free CPU1 -> CPU0 click trigger */
 #define CLICK_SEQ (*(volatile uint32_t *)0x0080001Cu)

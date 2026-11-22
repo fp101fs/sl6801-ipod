@@ -32,6 +32,7 @@ HOOKS = [
     ("hook_music_play_create",   0x00D7D57A, 0x00D8BEB0),
     ("hook_music_artist_create", 0x00D7D586, 0x00D8A630),
     ("hook_music_album_create",  0x00D7D58C, 0x00D8A188),
+    ("hook_cpu0_start",          0x00D4E866, 0x00D9DD10),
 ]
 
 
@@ -224,17 +225,16 @@ def main() -> None:
         "set -e",
         'REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"',
         '"$REPO_DIR/smartlink_flash/smtlink_dump" init \\',
+        '  write_flash 0 0 0 "$REPO_DIR/firmware/sl6801_ipod.bin" \\',
+        '  check_flash 0xe000 0x1ea8f0',
+        'echo "Verified & flashed iPod Classic firmware! Unplug USB, hold Power 8s to exit bootloader, then press Power 3s to boot."',
     ]
-    for i, (addr, sz) in enumerate(ranges):
-        cont = " \\" if i < len(ranges) - 1 else ""
-        lines.append(f'  erase_flash 0x{addr:x} 0x{sz:x} write_flash 0x{addr:x} 0x{addr:x} 0x{sz:x} "$REPO_DIR/firmware/sl6801_ipod.bin"{cont}')
-    lines.append('echo "Flashed iPod Classic firmware! Unplug USB and long-press Power to boot."')
     with open(FLASH_SH, "w") as f:
         f.write("\n".join(lines) + "\n")
     os.chmod(FLASH_SH, 0o755)
 
     total_kb = sum(sz for _, sz in ranges) // 1024
-    print(f"Wrote {OUTPUT} and {FLASH_SH} ({total_kb} KB across {len(ranges)} ranges: {[(hex(a), hex(s)) for a, s in ranges]})")
+    print(f"Wrote {OUTPUT} and {FLASH_SH} ({total_kb} KB diff across {len(ranges)} ranges)")
 
 
 if __name__ == "__main__":

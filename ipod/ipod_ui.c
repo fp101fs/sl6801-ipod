@@ -260,6 +260,7 @@ static void list_step(ipod_ui_t *ui, int dir)
     } else {
         ui->sel_idx = (int8_t)next;
     }
+    CLICK_SEQ++;
     update_list_colors(ui);
 }
 
@@ -325,10 +326,12 @@ static void wheel_event_cb(lv_event_t *e)
                 if (ui->accum_angle >= 1.15f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
+                    CLICK_SEQ++;
                     view_send_msg(4, 5, 2, 4); /* Next */
                 } else if (ui->accum_angle <= -1.15f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
+                    CLICK_SEQ++;
                     view_send_msg(4, 5, 0, 4); /* Prev */
                 }
             }
@@ -710,8 +713,8 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
 __attribute__((used)) int hook_music_menu_create(void)
 {
     int ret = stock_page_music_menu_create();
-    if (ret == 0 && fw_music_menu() && fw_music_menu()->btn[0]) {
-        build_ipod_shell(lv_obj_get_parent(fw_music_menu()->btn[0]), 2, "Music", false);
+    if (ret == 0 && fw_music_menu()) {
+        build_ipod_shell(lv_disp_get_scr_act(NULL), 2, "Music", false);
     }
     return ret;
 }
@@ -719,8 +722,8 @@ __attribute__((used)) int hook_music_menu_create(void)
 __attribute__((used)) int hook_music_song_create(void)
 {
     int ret = stock_page_music_song_create();
-    if (ret == 0 && fw_music_song() && fw_music_song()->hdr) {
-        build_ipod_shell(lv_obj_get_parent(fw_music_song()->hdr), 3, "Songs", false);
+    if (ret == 0 && fw_music_song()) {
+        build_ipod_shell(lv_disp_get_scr_act(NULL), 3, "Songs", false);
     }
     return ret;
 }
@@ -728,9 +731,8 @@ __attribute__((used)) int hook_music_song_create(void)
 __attribute__((used)) int hook_music_play_create(void)
 {
     int ret = stock_page_music_play_create();
-    if (ret == 0 && fw_music_play() && fw_music_play()->track_cnt) {
-        if (fw_music_play()->btn_set) lv_obj_add_flag(fw_music_play()->btn_set, LV_OBJ_FLAG_HIDDEN);
-        build_ipod_shell(lv_obj_get_parent(fw_music_play()->track_cnt), 4, "Now Playing", true);
+    if (ret == 0 && fw_music_play()) {
+        build_ipod_shell(lv_disp_get_scr_act(NULL), 4, "Now Playing", true);
     }
     return ret;
 }
@@ -738,8 +740,8 @@ __attribute__((used)) int hook_music_play_create(void)
 __attribute__((used)) int hook_music_artist_create(void)
 {
     int ret = stock_page_music_artist_create();
-    if (ret == 0 && fw_music_artist() && fw_music_artist()->hdr) {
-        build_ipod_shell(lv_obj_get_parent(fw_music_artist()->hdr), 6, "Artists", false);
+    if (ret == 0 && fw_music_artist()) {
+        build_ipod_shell(lv_disp_get_scr_act(NULL), 6, "Artists", false);
     }
     return ret;
 }
@@ -747,8 +749,8 @@ __attribute__((used)) int hook_music_artist_create(void)
 __attribute__((used)) int hook_music_album_create(void)
 {
     int ret = stock_page_music_album_create();
-    if (ret == 0 && fw_music_album() && fw_music_album()->hdr) {
-        build_ipod_shell(lv_obj_get_parent(fw_music_album()->hdr), 7, "Albums", false);
+    if (ret == 0 && fw_music_album()) {
+        build_ipod_shell(lv_disp_get_scr_act(NULL), 7, "Albums", false);
     }
     return ret;
 }
@@ -821,9 +823,9 @@ static void click_audio_task(void *arg)
     }
 }
 
-__attribute__((used)) void hook_cpu0_start(void *arg)
+__attribute__((used)) void hook_cpu0_start(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 {
+    fw_watchdog_setup(a, b, c, d);
     CLICK_SEQ = 0;
-    fw_task_create(click_audio_task, NULL, "ClickTask", 6, 0x300);
-    stock_view_start(arg);
+    fw_task_create(click_audio_task, NULL, "ClickTask", 6, 0x400);
 }
