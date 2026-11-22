@@ -12,7 +12,8 @@ Custom firmware, reverse-engineering notes, flash tools, and iPod Classic UI wor
    - Enumerated as **`301a:2801`** (`SmartlinkTechnology`, `USB2.0 Device`, serial `20201111000001`), exposing only a single USB Mass Storage interface (`08/06/50` SCSI Bulk-Only) mounted as `/Volumes/TOONZ` (32 GB FAT32 microSD).
    - No USB serial/UART port (`/dev/cu.usb*`) is exposed.
 2. **Entering Bootloader / DFU Mode (`301a:2800`):**
-   - Power the player completely off, hold down a physical button while plugging in USB-C.
+   - Power the player completely **off**.
+   - **Hold down the `VOLUME UP` key ONLY** *before* plugging in USB-C, and **keep holding it down while plugging in the USB-C cable**.
    - Enumerates as **`301a:2800`** (`SmartlinkTechnology`, serial `20201111000001`).
    - IOKit SCSI inquiry reports **`SMTLINK DEVICE 2.00`** — confirming the **Smartlink / Shenzhen Shenju SL6801** boot ROM.
 3. **Talking to the Boot ROM on macOS:**
@@ -99,17 +100,23 @@ The stock `drv_tp_open` never writes the CST726 touch threshold register (`0x80`
 4. **`0x00D01C`:** Updates `FIRM` CRC16 (`0xC56E` → `0x39F9`).
 
 ### Flashing & Recovery
-Put the player in bootloader mode (`301a:2800`), then run:
+1. **Enter bootloader mode (`301a:2800`):** Power the player completely off, **hold down the `VOLUME UP` key ONLY** before plugging in USB-C, and keep holding it while plugging in the cable.
+2. **Flash:**
+   ```bash
+   # Flash Blue iPod Classic UI + Click Wheel + Touch Sensitivity patch (recommended)
+   sudo ./scripts/flash_ipod.sh
 
-```bash
-# Flash touch sensitivity patch (writes only 3 sectors, < 1 sec)
-sudo ./scripts/flash_sensitive.sh
+   # Or flash touch sensitivity patch only
+   sudo ./scripts/flash_sensitive.sh
 
-# Restore untouched stock firmware
-sudo ./scripts/flash_restore.sh
-```
-
-To exit bootloader mode: unplug USB and long-press the Power button.
+   # Or restore untouched stock firmware
+   sudo ./scripts/flash_restore.sh
+   ```
+3. **Power on after reflash (exit ROM bootloader):**
+   1. **Unplug the USB-C cable.**
+   2. **Hold the Power button for 10 seconds** (forces a hard exit from the ROM bootloader).
+   3. **Release** the Power button.
+   4. **Press and hold the Power button for 3 seconds (or until it powers on).**
 
 ---
 
