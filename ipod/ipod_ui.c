@@ -52,10 +52,10 @@
 
 #define PI_F          3.14159265f
 #define TWO_PI_F      6.28318530f
-/* Tight, light iPod Classic Click Wheel detents (~33 ticks/rev slow -> ~43 med -> ~55 fast) */
-#define STEP_SLOW_RAD 0.19f
-#define STEP_MED_RAD  0.145f
-#define STEP_FAST_RAD 0.115f
+/* Click Wheel detents (2x travel distance: ~16.5 ticks/rev slow -> ~22 med -> ~27 fast) */
+#define STEP_SLOW_RAD 0.38f
+#define STEP_MED_RAD  0.29f
+#define STEP_FAST_RAD 0.23f
 #define STEP_MIN_MS   22u
 #define CLICK_STOP_MAGIC 0xFFFFFFFFu
 
@@ -584,14 +584,14 @@ static void wheel_event_cb(lv_event_t *e)
                     }
                 }
             } else {
-                if (ui->accum_angle >= 0.55f) {
+                if (ui->accum_angle >= 1.10f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
                     show_quadrant_glow(ui, 0);
                     if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
                     else CLICK_SEQ++;
                     view_send_msg(4, 5, 2, 4); /* Next */
-                } else if (ui->accum_angle <= -0.55f) {
+                } else if (ui->accum_angle <= -1.10f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
                     show_quadrant_glow(ui, 0);

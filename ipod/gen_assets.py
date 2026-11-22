@@ -414,12 +414,12 @@ def write_click_pcm_header(mp3_path: str, out_path: str) -> None:
     clip = samples[start : start + 1024]
     while len(clip) < 1024:
         clip.append(0)
-    # Soft-limit (+10 dB RMS boost via tanh) so the crisp click cuts through loudly & uniformly
+    # Soft-limited click at 50% volume (peak ~7750) for subtle, crisp tactile feedback
     norm = []
     for s in clip:
         x = (s / peak) * 3.2
         y = math.tanh(x)
-        norm.append(max(-32767, min(32767, int(round(y * 15500.0)))))
+        norm.append(max(-32767, min(32767, int(round(y * 7750.0)))))
 
     with open(out_path, "w") as f:
         f.write("#pragma once\n#include <stdint.h>\n\n")
