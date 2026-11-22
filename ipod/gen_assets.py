@@ -168,24 +168,28 @@ def write_click_pcm_header(mp3_path: str, out_path: str) -> None:
 
     samples = list(struct.unpack(f"<{len(raw) // 2}h", raw))
     peak = max(abs(s) for s in samples) or 1
-    # Trim leading silence right up to 2% of peak, take 1536 samples (6 x 256-frame periods @ 44.1kHz = 34.8ms)
+    # Trim leading silence right up to 2% of peak, take 1024 samples (4 x 256-frame periods @ 44.1kHz = 23.2ms)
     start = next((i for i, s in enumerate(samples) if abs(s) > peak * 0.02), 0)
     start = max(0, start - 16)
-    clip = samples[start : start + 1536]
-    while len(clip) < 1536:
+    clip = samples[start : start + 1024]
+    while len(clip) < 1024:
         clip.append(0)
-    # Normalize to crisp, clearly audible iPod click level (peak ~30000)
-    scale = 30000.0 / peak
-    norm = [max(-32767, min(32767, int(round(s * scale)))) for s in clip]
+    # Soft-limit (+10 dB RMS boost via tanh) so the crisp click cuts through loudly & uniformly
+    norm = []
+    for s in clip:
+        x = (s / peak) * 3.2
+        y = math.tanh(x)
+        norm.append(max(-32767, min(32767, int(round(y * 31000.0)))))
 
     with open(out_path, "w") as f:
         f.write("#pragma once\n#include <stdint.h>\n\n")
-        f.write("#define CLICK_PCM_LEN 1536\n")
+        f.write("#define CLICK_PCM_LEN 1024\n")
         f.write("static const int16_t click_pcm[CLICK_PCM_LEN] = {\n")
         for off in range(0, len(norm), 12):
             f.write("  " + ",".join(str(v) for v in norm[off : off + 12]) + ",\n")
         f.write("};\n")
-    print(f"Generated {out_path} ({len(norm)} samples @ 44100 Hz, {len(norm) * 2} bytes)")
+    rms = math.sqrt(sum(v * v for v in norm) / len(norm))
+    print(f"Generated {out_path} ({len(norm)} samples @ 44100 Hz, peak={max(abs(v) for v in norm)}, rms={rms:.0f})")
 
 
 if __name__ == "__main__":

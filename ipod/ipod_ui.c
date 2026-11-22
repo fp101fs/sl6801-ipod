@@ -32,9 +32,14 @@
 #define ROW_H     20
 #define BAR_W     208
 
-#define PI_F      3.14159265f
-#define TWO_PI_F  6.28318530f
-#define STEP_RAD  0.46f /* ~26 degrees per Click Wheel tick */
+#define PI_F          3.14159265f
+#define TWO_PI_F      6.28318530f
+/* Authentic iPod Classic Click Wheel (96 raw counts/rev = 3.75 deg/count,
+ * ~24 detents/rev slow -> ~36 med -> ~48 fast with velocity acceleration) */
+#define STEP_SLOW_RAD 0.24f /* ~13.8 deg/tick (~26 ticks/rev) */
+#define STEP_MED_RAD  0.17f /* ~9.7 deg/tick  (~37 ticks/rev) */
+#define STEP_FAST_RAD 0.13f /* ~7.5 deg/tick  (~48 ticks/rev) */
+#define CLICK_STOP_MAGIC 0xFFFFFFFFu
 
 /* ---------------------------------------------------------------- Fast FPU atan2f */
 static float fast_atan2f(float y, float x)
@@ -173,6 +178,8 @@ typedef struct {
     bool wheel_scrolled;
     float prev_angle;
     float accum_angle;
+    float ang_vel;
+    uint32_t prev_tick_ms;
     int16_t down_x;
     int16_t down_y;
 
@@ -239,16 +246,17 @@ static void update_list_colors(ipod_ui_t *ui)
     }
 }
 
-static void list_step(ipod_ui_t *ui, int dir)
+static void list_step(ipod_ui_t *ui, int dir, bool fast)
 {
     int n = count_valid_rows(ui->page_id);
-    if (ui->page_id != 2) n = ROW_COUNT; /* avoid premature page flip while CPU0 refreshes rows */
+    if (ui->page_id != 2) n = ROW_COUNT;
     int next = ui->sel_idx + dir;
     uint32_t now = lv_tick_get();
+    uint32_t cooldown = fast ? 130u : 200u;
 
     if (next >= n) {
         if (ui->page_id != 2) {
-            if (now - ui->page_flip_ms < 260u) return;
+            if (now - ui->page_flip_ms < cooldown) return;
             ui->page_flip_ms = now;
             view_send_msg(ui->page_id, 6, 0, 0x16); /* Next page */
             ui->sel_idx = 0;
@@ -258,7 +266,7 @@ static void list_step(ipod_ui_t *ui, int dir)
         }
     } else if (next < 0) {
         if (ui->page_id != 2) {
-            if (now - ui->page_flip_ms < 260u) return;
+            if (now - ui->page_flip_ms < cooldown) return;
             ui->page_flip_ms = now;
             view_send_msg(ui->page_id, 6, 0, 0x17); /* Prev page */
             ui->sel_idx = (int8_t)(ROW_COUNT - 1);
@@ -269,7 +277,8 @@ static void list_step(ipod_ui_t *ui, int dir)
     } else {
         ui->sel_idx = (int8_t)next;
     }
-    CLICK_SEQ++;
+    if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
+    else CLICK_SEQ++;
     update_list_colors(ui);
 }
 
@@ -300,6 +309,8 @@ static void wheel_event_cb(lv_event_t *e)
         ui->wheel_down = true;
         ui->wheel_scrolled = false;
         ui->accum_angle = 0.0f;
+        ui->ang_vel = 0.0f;
+        ui->prev_tick_ms = lv_tick_get();
         ui->down_x = px;
         ui->down_y = py;
         ui->wheel_in_center = (r2 <= (float)(WHEEL_R_IN * WHEEL_R_IN));
@@ -311,36 +322,55 @@ static void wheel_event_cb(lv_event_t *e)
         }
     } else if (code == LV_EVENT_PRESSING && ui->wheel_down && !ui->wheel_in_center) {
         if (r2 > (float)((WHEEL_R_IN - 4) * (WHEEL_R_IN - 4))) {
+            uint32_t now = lv_tick_get();
+            uint32_t dt_ms = now - ui->prev_tick_ms;
+            if (dt_ms < 5u) dt_ms = 5u;
+            ui->prev_tick_ms = now;
+
             float ang = fast_atan2f(dy, dx);
             float d = ang - ui->prev_angle;
             if (d > PI_F) d -= TWO_PI_F;
             else if (d < -PI_F) d += TWO_PI_F;
             ui->prev_angle = ang;
             ui->accum_angle += d;
+
+            /* Smooth angular velocity (rad/s) for authentic iPod acceleration */
+            float inst_vel = (d < 0.0f ? -d : d) * 1000.0f / (float)dt_ms;
+            ui->ang_vel = ui->ang_vel * 0.6f + inst_vel * 0.4f;
+            float step_rad = STEP_SLOW_RAD;
+            bool fast = false;
+            if (ui->ang_vel > 6.5f) {
+                step_rad = STEP_FAST_RAD;
+                fast = true;
+            } else if (ui->ang_vel > 3.2f) {
+                step_rad = STEP_MED_RAD;
+            }
+
             show_wheel_feedback(ui, px, py, 28);
 
             if (!ui->is_play) {
-                while (ui->accum_angle >= STEP_RAD) {
-                    ui->accum_angle -= STEP_RAD;
+                while (ui->accum_angle >= step_rad) {
+                    ui->accum_angle -= step_rad;
                     ui->wheel_scrolled = true;
-                    list_step(ui, +1);
+                    list_step(ui, +1, fast);
                 }
-                while (ui->accum_angle <= -STEP_RAD) {
-                    ui->accum_angle += STEP_RAD;
+                while (ui->accum_angle <= -step_rad) {
+                    ui->accum_angle += step_rad;
                     ui->wheel_scrolled = true;
-                    list_step(ui, -1);
+                    list_step(ui, -1, fast);
                 }
             } else {
-                /* On Now Playing: 65-degree wheel twist skips Next/Prev track */
-                if (ui->accum_angle >= 1.15f) {
+                if (ui->accum_angle >= 0.60f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
-                    CLICK_SEQ++;
+                    if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
+                    else CLICK_SEQ++;
                     view_send_msg(4, 5, 2, 4); /* Next */
-                } else if (ui->accum_angle <= -1.15f) {
+                } else if (ui->accum_angle <= -0.60f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
-                    CLICK_SEQ++;
+                    if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
+                    else CLICK_SEQ++;
                     view_send_msg(4, 5, 0, 4); /* Prev */
                 }
             }
@@ -350,33 +380,28 @@ static void wheel_event_cb(lv_event_t *e)
         lv_obj_add_flag(ui->wheel_hl, LV_OBJ_FLAG_HIDDEN);
 
         if (ui->wheel_in_center) {
+            CLICK_SEQ = CLICK_STOP_MAGIC; /* release /dev/audio0 immediately before playing */
             if (ui->is_play) {
                 view_send_msg(4, 1, 0, 0x14); /* Music Settings */
             } else {
                 view_send_msg(ui->page_id, 4, (uint32_t)ui->sel_idx, 4); /* Select item */
             }
         } else if (!ui->wheel_scrolled) {
-            /* Classify tap into the 4 Click Wheel quadrants */
             float tdx = (float)(ui->down_x - WHEEL_CX);
             float tdy = (float)(ui->down_y - WHEEL_CY);
             float ax = tdx < 0.0f ? -tdx : tdx;
             float ay = tdy < 0.0f ? -tdy : tdy;
             if (ay >= ax) {
                 if (tdy < 0.0f) {
-                    /* TOP: MENU (Back) */
-                    view_send_msg(ui->page_id, 1, 0, 0x15);
+                    view_send_msg(ui->page_id, 1, 0, 0x15); /* MENU (Back) */
                 } else {
-                    /* BOTTOM: Play / Pause */
-                    view_send_msg(4, 5, 1, 4);
+                    CLICK_SEQ = CLICK_STOP_MAGIC;
+                    view_send_msg(4, 5, 1, 4); /* Play / Pause */
                 }
             } else {
-                if (tdx < 0.0f) {
-                    /* LEFT: Prev Track */
-                    view_send_msg(4, 5, 0, 4);
-                } else {
-                    /* RIGHT: Next Track */
-                    view_send_msg(4, 5, 2, 4);
-                }
+                CLICK_SEQ = CLICK_STOP_MAGIC;
+                if (tdx < 0.0f) view_send_msg(4, 5, 0, 4); /* Prev */
+                else            view_send_msg(4, 5, 2, 4); /* Next */
             }
         }
     }
@@ -791,7 +816,8 @@ static void click_audio_task(void *arg)
 
     for (;;) {
         uint32_t seq = CLICK_SEQ;
-        if (seq == last_seq) {
+        if (seq == last_seq || seq == CLICK_STOP_MAGIC) {
+            last_seq = seq;
             fw_os_sleep(8);
             continue;
         }
@@ -805,18 +831,24 @@ static void click_audio_task(void *arg)
         void *dev = fw_dev_open("/dev/audio0", 0, params);
         if (!dev) continue;
 
-        /* 8 silent pre-roll periods (~46ms) so Class-D speaker amp is 100% awake & unmuted */
+        /* 8 silent pre-roll periods (~46ms) so Class-D speaker amp wakes cleanly once */
         rom_memset(buf, 0, sizeof(buf));
         for (int pre = 0; pre < 8; pre++) {
             fw_dev_write(dev, buf, 256, 0);
         }
 
-        /* Stream click sample; stay open ~350ms (60 periods) so rapid spins tick with 0ms lag! */
+        /* Keep /dev/audio0 open ~1.5s (260 periods) while spinning to prevent mid-spin amp pops!
+         * Exits immediately if CLICK_STOP_MAGIC is signaled (user pressed Center/Play). */
         int pos = 0;
         int idle_periods = 0;
-        while (idle_periods < 60) {
-            if (CLICK_SEQ != last_seq) {
-                last_seq = CLICK_SEQ;
+        while (idle_periods < 260) {
+            uint32_t cur = CLICK_SEQ;
+            if (cur == CLICK_STOP_MAGIC) {
+                last_seq = cur;
+                break;
+            }
+            if (cur != last_seq) {
+                last_seq = cur;
                 pos = 0;
                 idle_periods = 0;
             }
@@ -831,8 +863,10 @@ static void click_audio_task(void *arg)
             fw_dev_write(dev, buf, 256, 0);
         }
 
-        /* Drain ring and close cleanly so music playback always gets /dev/audio0 */
-        fw_os_sleep(60);
+        /* Drain ring and close cleanly */
+        rom_memset(buf, 0, sizeof(buf));
+        for (int d = 0; d < 8; d++) fw_dev_write(dev, buf, 256, 0);
+        fw_os_sleep(50);
         fw_dev_close(&dev);
     }
 }
