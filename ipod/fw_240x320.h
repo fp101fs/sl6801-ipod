@@ -25,6 +25,43 @@ typedef struct {
     const uint8_t *data;
 } lv_img_dsc_t;
 
+#define LV_IMG_CF_TRUE_COLOR   4
+#define LV_IMG_CF_INDEXED_2BIT 8
+#define LV_IMG_CF_INDEXED_4BIT 9
+#define LV_IMG_CF_INDEXED_8BIT 10
+#define LV_IMG_HEADER(cf, w, h) ((uint32_t)(cf) | ((uint32_t)(w) << 10) | ((uint32_t)(h) << 21))
+
+/* LVGL 8.3 lv_anim_t (verified 0x44 bytes from yp3_2.0.43 disassembly) */
+typedef struct _lv_anim_t lv_anim_t;
+typedef void (*lv_anim_exec_xcb_t)(void *, int32_t);
+typedef int32_t (*lv_anim_path_cb_t)(const lv_anim_t *);
+typedef void (*lv_anim_start_cb_t)(lv_anim_t *);
+typedef void (*lv_anim_ready_cb_t)(lv_anim_t *);
+typedef int32_t (*lv_anim_get_value_cb_t)(lv_anim_t *);
+
+struct _lv_anim_t {
+    void *var;                           /* 0x00 */
+    lv_anim_exec_xcb_t exec_cb;          /* 0x04 */
+    lv_anim_start_cb_t start_cb;         /* 0x08 */
+    lv_anim_ready_cb_t ready_cb;         /* 0x0C */
+    lv_anim_get_value_cb_t get_value_cb; /* 0x10 */
+    void *user_data;                     /* 0x14 */
+    lv_anim_path_cb_t path_cb;           /* 0x18 */
+    int32_t start_value;                 /* 0x1C */
+    int32_t current_value;               /* 0x20 */
+    int32_t end_value;                   /* 0x24 */
+    int32_t time;                        /* 0x28 */
+    int32_t act_time;                    /* 0x2C */
+    uint32_t playback_delay;             /* 0x30 */
+    uint32_t playback_time;              /* 0x34 */
+    uint32_t repeat_delay;               /* 0x38 */
+    uint16_t repeat_cnt;                 /* 0x3C */
+    uint8_t flags;                       /* 0x3E: early_apply:1, playback_now:1, run_round:1, start_cb_called:1 */
+    uint8_t _pad3f;                      /* 0x3F */
+    uint32_t time_orig;                  /* 0x40 */
+};
+_Static_assert(sizeof(lv_anim_t) == 0x44, "lv_anim_t must be 0x44 bytes");
+
 typedef struct {
     lv_obj_t *target;
     lv_obj_t *current_target;
@@ -115,9 +152,19 @@ static inline void lv_indev_read_point(void *indev, int16_t *x, int16_t *y)
 #define lv_obj_clear_flag FW_FN(0x00DA04D2, void, (lv_obj_t *obj, uint32_t f))
 #define lv_obj_set_width  FW_FN(0x00DA1442, void, (lv_obj_t *obj, lv_coord_t w))
 #define lv_obj_set_size   FW_FN(0x00DA14A2, void, (lv_obj_t *obj, lv_coord_t w, lv_coord_t h))
+#define lv_obj_set_x      FW_FN(0x00DA14EC, void, (lv_obj_t *obj, lv_coord_t x))
+#define lv_obj_set_y      FW_FN(0x00DA1524, void, (lv_obj_t *obj, lv_coord_t y))
 #define lv_obj_set_pos    FW_FN(0x00DA155C, void, (lv_obj_t *obj, lv_coord_t x, lv_coord_t y))
 #define lv_obj_align      FW_FN(0x00DA162A, void, (lv_obj_t *obj, uint8_t align, lv_coord_t x, lv_coord_t y))
 #define lv_obj_invalidate FW_FN(0x00DA1994, void, (lv_obj_t *obj))
+
+/* LVGL 8.3 animations (verified from yp3_2.0.43 disassembly around 0x00DAE000) */
+#define lv_anim_init      FW_FN(0x00DADFD8, void, (lv_anim_t *a))
+#define lv_anim_del       FW_FN(0x00DAE00C, bool, (void *var, lv_anim_exec_xcb_t exec_cb))
+#define lv_anim_start     FW_FN(0x00DAE060, lv_anim_t *, (const lv_anim_t *a))
+#define LV_ANIM_PATH_LINEAR      ((lv_anim_path_cb_t)(uintptr_t)0x00DADDDDu)
+#define LV_ANIM_PATH_EASE_OUT    ((lv_anim_path_cb_t)(uintptr_t)0x00DAE15Fu)
+#define LV_ANIM_PATH_EASE_IN_OUT ((lv_anim_path_cb_t)(uintptr_t)0x00DAE195u)
 #define lv_obj_get_child     FW_FN(0x00DA44C2, lv_obj_t *, (const lv_obj_t *obj, int32_t id))
 #define lv_obj_get_child_cnt FW_FN(0x00DA44E0, uint32_t, (const lv_obj_t *obj))
 #define lv_obj_get_parent(obj) (*(lv_obj_t **)((uint8_t *)(obj) + 4))
@@ -179,6 +226,8 @@ static inline int32_t lv_bar_get_max_fast(lv_obj_t *bar)
 #define rom_strcmp FW_FN(0x00000AB2, int, (const char *a, const char *b))
 #define rom_strlen FW_FN(0x00000AA2, size_t, (const char *s))
 #define rom_pcm_mono_to_stereo FW_FN(0x000013EA, void, (int16_t *dst, const int16_t *src, uint32_t n))
+#define rom_sinf FW_FN(0x00048488, float, (float x))
+#define rom_cosf FW_FN(0x0004840C, float, (float x))
 
 /* ---------------------------------------------------------------- CPU0 OS & Audio Devices */
 #define FW_DEV_LIST    ((void *)0x0081D5E4u)

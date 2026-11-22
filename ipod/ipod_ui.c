@@ -1,13 +1,22 @@
 /*
- * Blue iPod Classic UI + Polar-Angle Touch Click Wheel for Smartlink SL6801 (240x320).
+ * 60 FPS Blue iPod Classic UI (v2) + Polar-Angle Touch Click Wheel for Smartlink SL6801 (240x320).
  * Replaces Music Menu (page 2), Songs (page 3), Now Playing (page 4),
  * Artists (page 6), and Albums (page 7) while keeping CPU0 audio/BT/DB 100% intact.
+ *
+ * Combines:
+ *   1. LVGL built-in lv_anim (cubic ease-out horizontal slide transitions)
+ *   2. Direct RAM pixel buffers driven by a 16ms (60 FPS) lv_timer + Cortex-M4F FPU + rom_sinf
+ *      (3D-tilted Album Art + Glossy Floor Reflection + Animated Specular Sheen,
+ *       and Glossy Aqua Progress Bar with sub-pixel interpolation & shimmer)
+ *   3. Compact LV_IMG_CF_INDEXED_4BIT baked sprite sheet icons (Play, Pause, Battery,
+ *      and 5 Click Wheel quadrant tactile press glows)
  *
  * Rules: runs on CPU1 (LVGL UI thread); zero writable globals; all state in lv_mem_alloc.
  */
 #include "fw_240x320.h"
 #include "gen/clickwheel.h"
 #include "gen/album_default.h"
+#include "gen/sprites.h"
 #include "gen/click_pcm.h"
 
 /* ---------------------------------------------------------------- Geometry */
@@ -19,6 +28,8 @@
 #define LCD_W 228
 #define LCD_H 142
 #define HDR_H 20
+#define BODY_W (LCD_W - 4)        /* 224 */
+#define BODY_H (LCD_H - HDR_H - 4) /* 118 */
 
 #define WHEEL_SIZE 156
 #define WHEEL_X    ((SCR_W - WHEEL_SIZE) / 2) /* 42 */
@@ -29,16 +40,23 @@
 #define WHEEL_R_OUT 82
 
 #define ROW_COUNT 6
-#define ROW_H     20
+#define ROW_H     19
+#define SCROLL_X  (BODY_W - 9)
+#define SCROLL_W  7
+#define SCROLL_H  (BODY_H - 4)
+#define THUMB_H   20
+
 #define BAR_W     208
+#define BAR_H     11
+#define BAR_BUF_BYTES (1024u + (uint32_t)(BAR_W * BAR_H))
 
 #define PI_F          3.14159265f
 #define TWO_PI_F      6.28318530f
 /* Authentic iPod Classic Click Wheel (96 raw counts/rev = 3.75 deg/count,
- * ~24 detents/rev slow -> ~36 med -> ~48 fast with velocity acceleration) */
-#define STEP_SLOW_RAD 0.24f /* ~13.8 deg/tick (~26 ticks/rev) */
-#define STEP_MED_RAD  0.17f /* ~9.7 deg/tick  (~37 ticks/rev) */
-#define STEP_FAST_RAD 0.13f /* ~7.5 deg/tick  (~48 ticks/rev) */
+ * ~26 ticks/rev slow -> ~37 med -> ~48 fast with velocity acceleration) */
+#define STEP_SLOW_RAD 0.24f
+#define STEP_MED_RAD  0.17f
+#define STEP_FAST_RAD 0.13f
 #define CLICK_STOP_MAGIC 0xFFFFFFFFu
 
 /* ---------------------------------------------------------------- Fast FPU atan2f */
@@ -135,7 +153,7 @@ static void fmt_track_of(char *out, size_t cap, const char *src)
     out[j] = '\0';
 }
 
-/* ---------------------------------------------------------------- Style helpers */
+/* ---------------------------------------------------------------- Style & Anim helpers */
 static void style_clean_box(lv_obj_t *o)
 {
     lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
@@ -158,19 +176,22 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *txt, lv_color_t col, u
     return l;
 }
 
+static void anim_set_x_cb(void *obj, int32_t v)
+{
+    lv_obj_set_x((lv_obj_t *)obj, (lv_coord_t)v);
+}
+
 /* ---------------------------------------------------------------- UI State (in LVGL heap) */
 typedef struct {
     uint8_t page_id; /* 2=Menu, 3=Songs, 4=NowPlaying, 6=Artists, 7=Albums */
     bool is_play;
 
-    lv_obj_t *root;      /* 240x320 blue metallic shell */
-    lv_obj_t *lcd_body;  /* animated content pane inside LCD */
-    lv_obj_t *wheel_hl;  /* subtle touch-feedback highlight dot on wheel */
-    lv_timer_t *timer;
-
-    /* Slide-in animation state */
-    uint32_t anim_start_ms;
-    bool anim_done;
+    lv_obj_t *root;       /* 240x320 anodized blue metallic shell */
+    lv_obj_t *lcd_body;   /* lv_anim horizontal-sliding content pane */
+    lv_obj_t *wheel_glow; /* baked INDEXED_4BIT Click Wheel quadrant press glow */
+    lv_obj_t *ico_state;  /* baked INDEXED_4BIT header Play/Pause sprite */
+    lv_timer_t *timer;    /* 16ms (60 FPS) animation & live sync timer */
+    uint8_t last_glow;    /* 0=none, 1=top, 2=bot, 3=left, 4=right, 5=center */
 
     /* Click wheel polar touch state */
     bool wheel_down;
@@ -183,15 +204,23 @@ typedef struct {
     int16_t down_x;
     int16_t down_y;
 
-    /* Now Playing widgets */
+    /* Now Playing widgets & direct 60 FPS RAM pixel buffers */
     lv_obj_t *lbl_count;
     lv_obj_t *lbl_title;
     lv_obj_t *lbl_artist;
     lv_obj_t *lbl_elapsed;
     lv_obj_t *lbl_remain;
-    lv_obj_t *bar_fill;
-    lv_obj_t *lbl_play_ind;
+    lv_obj_t *img_art;
+    lv_obj_t *img_bar;
+    uint8_t *art_buf;       /* 62x72 INDEXED_8BIT RAM buffer (5.5 KB) */
+    uint8_t *bar_buf;       /* 208x11 INDEXED_8BIT RAM buffer (3.3 KB) */
+    lv_img_dsc_t art_dsc;
+    lv_img_dsc_t bar_dsc;
     float smooth_pct;
+    float sheen_phase;
+    bool is_paused;
+    bool last_paused_known;
+    uint8_t frame_div;
     char last_count[24];
     char last_title[80];
     char last_artist[80];
@@ -199,13 +228,144 @@ typedef struct {
     char last_tot[16];
 
     /* List widgets (Music Menu / Songs / Artists / Albums) */
-    lv_obj_t *sel_pill;          /* crisp iPod Aqua blue highlight bar */
+    lv_obj_t *sel_pill;     /* 60 FPS spring-animated Aqua blue highlight bar */
+    lv_obj_t *scroll_thumb; /* classic iPod right-edge scrollbar thumb */
     lv_obj_t *row_lbl[ROW_COUNT];
     lv_obj_t *row_chev[ROW_COUNT];
     int8_t sel_idx;
+    float pill_y;           /* spring-interpolated Y coordinate */
+    int16_t last_pill_y;
+    int16_t last_thumb_y;
     uint32_t page_flip_ms;
     char last_row[ROW_COUNT][64];
 } ipod_ui_t;
+
+/* ---------------------------------------------------------------- Direct Pixel Buffer Renderers */
+static void set_pal(uint8_t *pal, uint8_t idx, uint8_t r, uint8_t g, uint8_t b)
+{
+    uint8_t *p = pal + (uint32_t)idx * 4u;
+    p[0] = b;
+    p[1] = g;
+    p[2] = r;
+    p[3] = 0xFF;
+}
+
+static void init_bar_palette(uint8_t *buf)
+{
+    rom_memset(buf, 0, 1024u);
+    set_pal(buf, 0, 0xFF, 0xFF, 0xFF); /* white corner */
+    set_pal(buf, 1, 0xA4, 0xAE, 0xBC); /* recessed metallic border */
+
+    /* Indices 2..12: Glossy silver-white empty track gradient (11 rows) */
+    static const uint8_t trk_r[BAR_H] = {0xD4, 0xDC, 0xE6, 0xEE, 0xF4, 0xF8, 0xFA, 0xFC, 0xFC, 0xFA, 0xF2};
+    static const uint8_t trk_g[BAR_H] = {0xDC, 0xE4, 0xEC, 0xF2, 0xF6, 0xFA, 0xFC, 0xFD, 0xFD, 0xFC, 0xF5};
+    static const uint8_t trk_b[BAR_H] = {0xE6, 0xEC, 0xF2, 0xF7, 0xFA, 0xFD, 0xFF, 0xFF, 0xFF, 0xFE, 0xFA};
+
+    /* Indices 16..26: Authentic Apple Aqua glossy blue bar gradient (11 rows) */
+    static const uint8_t aq_r[BAR_H]  = {0x9C, 0x82, 0x6A, 0x54, 0x3E, 0x2A, 0x26, 0x28, 0x2E, 0x3A, 0x4C};
+    static const uint8_t aq_g[BAR_H]  = {0xD8, 0xC6, 0xB4, 0xA2, 0x90, 0x7C, 0x76, 0x7A, 0x86, 0x98, 0xAE};
+    static const uint8_t aq_b[BAR_H]  = {0xFF, 0xFC, 0xF8, 0xF2, 0xEC, 0xE2, 0xDC, 0xE0, 0xE6, 0xEE, 0xF6};
+
+    for (int y = 0; y < BAR_H; y++) {
+        set_pal(buf, (uint8_t)(2 + y), trk_r[y], trk_g[y], trk_b[y]);
+        uint8_t r = aq_r[y], g = aq_g[y], b = aq_b[y];
+        set_pal(buf, (uint8_t)(16 + y), r, g, b);
+        /* Indices 32..42: Bright specular glass sheen (+42% toward white) */
+        set_pal(buf, (uint8_t)(32 + y),
+                (uint8_t)(r + ((255 - r) * 42) / 100),
+                (uint8_t)(g + ((255 - g) * 42) / 100),
+                (uint8_t)(b + ((255 - b) * 42) / 100));
+        /* Indices 48..58: Soft sheen halo / sub-pixel leading edge (+18% toward white) */
+        set_pal(buf, (uint8_t)(48 + y),
+                (uint8_t)(r + ((255 - r) * 18) / 100),
+                (uint8_t)(g + ((255 - g) * 18) / 100),
+                (uint8_t)(b + ((255 - b) * 18) / 100));
+    }
+}
+
+static void render_aqua_bar(ipod_ui_t *ui)
+{
+    if (!ui->bar_buf) return;
+    uint8_t *px = ui->bar_buf + 1024u;
+    float fill_f = ui->smooth_pct * (float)(BAR_W - 2);
+    int fill_px = (int)fill_f;
+    if (fill_px < 0) fill_px = 0;
+    if (fill_px > BAR_W - 2) fill_px = BAR_W - 2;
+    int sub_edge = ((fill_f - (float)fill_px) >= 0.35f && fill_px < BAR_W - 2) ? 1 : 0;
+
+    /* Smooth animated specular sheen sweeping across the Aqua bar */
+    float s = rom_sinf(ui->sheen_phase * 1.4f);
+    int sheen_cx = (int)((s * 0.5f + 0.5f) * (float)(fill_px + 24)) - 12;
+
+    for (int y = 0; y < BAR_H; y++) {
+        uint8_t *row = px + y * BAR_W;
+        bool top_bot = (y == 0 || y == BAR_H - 1);
+        uint8_t trk_c = (uint8_t)(2 + y);
+        uint8_t aq_c  = (uint8_t)(16 + y);
+        uint8_t hi_c  = (uint8_t)(32 + y);
+        uint8_t mid_c = (uint8_t)(48 + y);
+
+        if (top_bot) {
+            row[0] = 0;
+            row[BAR_W - 1] = 0;
+            row[1] = 1;
+            row[BAR_W - 2] = 1;
+            rom_memset(row + 2, 1, BAR_W - 4);
+            continue;
+        }
+
+        row[0] = 1;
+        row[BAR_W - 1] = 1;
+        int end_x = 1 + fill_px;
+        for (int x = 1; x < BAR_W - 1; x++) {
+            if (x < end_x) {
+                if (!ui->is_paused) {
+                    int dist = (x - (y >> 1)) - sheen_cx;
+                    if (dist < 0) dist = -dist;
+                    if (dist <= 5)      row[x] = hi_c;
+                    else if (dist <= 11) row[x] = mid_c;
+                    else                 row[x] = aq_c;
+                } else {
+                    row[x] = aq_c;
+                }
+            } else if (x == end_x && sub_edge) {
+                row[x] = mid_c;
+            } else {
+                row[x] = trk_c;
+            }
+        }
+    }
+    lv_obj_invalidate(ui->img_bar);
+}
+
+static void render_album_sheen(ipod_ui_t *ui)
+{
+    if (!ui->art_buf) return;
+    const uint8_t *src = img_album_default_map + 1024u;
+    uint8_t *dst = ui->art_buf + 1024u;
+    rom_memcpy(dst, src, (size_t)(ALBUM_ART_W * ALBUM_ART_H));
+
+    /* Subtle periodic diagonal glass sheen across the 3D-tilted cover art */
+    if (!ui->is_paused) {
+        float wave = rom_sinf(ui->sheen_phase * 0.75f);
+        /* Sweep only during positive half-cycle so it feels like an authentic gentle gleam */
+        if (wave > -0.2f) {
+            int band = (int)((wave + 0.2f) * 82.0f) - 10;
+            for (int y = 2; y < 56; y++) {
+                uint8_t *row = dst + y * ALBUM_ART_W;
+                int x_start = band - (y >> 1);
+                int x_end = x_start + 7;
+                if (x_start < 2) x_start = 2;
+                if (x_end > ALBUM_ART_W - 3) x_end = ALBUM_ART_W - 3;
+                for (int x = x_start; x < x_end; x++) {
+                    uint8_t c = row[x];
+                    if (c != 0u) row[x] = (uint8_t)(c | 0x80u);
+                }
+            }
+        }
+    }
+    lv_obj_invalidate(ui->img_art);
+}
 
 /* ---------------------------------------------------------------- Row helpers */
 static lv_obj_t *get_stock_row_label(uint8_t page_id, int idx)
@@ -232,12 +392,22 @@ static int count_valid_rows(uint8_t page_id)
     return cnt > 0 ? cnt : ROW_COUNT;
 }
 
-static void update_list_colors(ipod_ui_t *ui)
+static void update_list_colors(ipod_ui_t *ui, bool snap_pill)
 {
     lv_color_t white = lv_rgb(0xFF, 0xFF, 0xFF);
     lv_color_t dark  = lv_rgb(0x14, 0x18, 0x1F);
     lv_color_t gray  = lv_rgb(0x9A, 0xA4, 0xB2);
-    lv_obj_set_pos(ui->sel_pill, 0, (lv_coord_t)(ui->sel_idx * ROW_H));
+    if (snap_pill) {
+        int16_t ty = (int16_t)(ui->sel_idx * ROW_H + 2);
+        ui->pill_y = (float)ty;
+        ui->last_pill_y = ty;
+        lv_obj_set_y(ui->sel_pill, ty);
+        if (ui->scroll_thumb) {
+            int16_t sy = (int16_t)((ui->sel_idx * (SCROLL_H - THUMB_H - 2)) / (ROW_COUNT - 1));
+            ui->last_thumb_y = sy;
+            lv_obj_set_y(ui->scroll_thumb, sy);
+        }
+    }
     for (int i = 0; i < ROW_COUNT; i++) {
         bool sel = (i == ui->sel_idx);
         lv_obj_set_style_text_color(ui->row_lbl[i], sel ? white : dark, 0);
@@ -253,6 +423,7 @@ static void list_step(ipod_ui_t *ui, int dir, bool fast)
     int next = ui->sel_idx + dir;
     uint32_t now = lv_tick_get();
     uint32_t cooldown = fast ? 130u : 200u;
+    bool flipped = false;
 
     if (next >= n) {
         if (ui->page_id != 2) {
@@ -260,6 +431,7 @@ static void list_step(ipod_ui_t *ui, int dir, bool fast)
             ui->page_flip_ms = now;
             view_send_msg(ui->page_id, 6, 0, 0x16); /* Next page */
             ui->sel_idx = 0;
+            flipped = true;
         } else {
             ui->sel_idx = (int8_t)(n - 1);
             return;
@@ -270,6 +442,7 @@ static void list_step(ipod_ui_t *ui, int dir, bool fast)
             ui->page_flip_ms = now;
             view_send_msg(ui->page_id, 6, 0, 0x17); /* Prev page */
             ui->sel_idx = (int8_t)(ROW_COUNT - 1);
+            flipped = true;
         } else {
             ui->sel_idx = 0;
             return;
@@ -279,18 +452,52 @@ static void list_step(ipod_ui_t *ui, int dir, bool fast)
     }
     if (CLICK_SEQ == CLICK_STOP_MAGIC) CLICK_SEQ = 1;
     else CLICK_SEQ++;
-    update_list_colors(ui);
+    update_list_colors(ui, flipped);
+}
+
+/* ---------------------------------------------------------------- Click Wheel Tactile Glow */
+static void show_quadrant_glow(ipod_ui_t *ui, uint8_t q)
+{
+    if (q == ui->last_glow) return;
+    ui->last_glow = q;
+    if (q == 0) {
+        lv_obj_add_flag(ui->wheel_glow, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    const lv_img_dsc_t *src = &img_glow_center;
+    lv_coord_t gx = WHEEL_CX - 25, gy = WHEEL_CY - 25;
+    if (q == 1) { /* Top: MENU */
+        src = &img_glow_top;
+        gx = WHEEL_CX - 26;
+        gy = WHEEL_CY - 69;
+    } else if (q == 2) { /* Bottom: >|| */
+        src = &img_glow_bot;
+        gx = WHEEL_CX - 26;
+        gy = WHEEL_CY + 41;
+    } else if (q == 3) { /* Left: |<< */
+        src = &img_glow_left;
+        gx = WHEEL_CX - 69;
+        gy = WHEEL_CY - 26;
+    } else if (q == 4) { /* Right: >>| */
+        src = &img_glow_right;
+        gx = WHEEL_CX + 41;
+        gy = WHEEL_CY - 26;
+    }
+    lv_img_set_src(ui->wheel_glow, src);
+    lv_obj_set_pos(ui->wheel_glow, gx, gy);
+    lv_obj_clear_flag(ui->wheel_glow, LV_OBJ_FLAG_HIDDEN);
+}
+
+static uint8_t point_to_quadrant(float dx, float dy, bool in_center)
+{
+    if (in_center) return 5;
+    float ax = dx < 0.0f ? -dx : dx;
+    float ay = dy < 0.0f ? -dy : dy;
+    if (ay >= ax) return (dy < 0.0f) ? 1 : 2;
+    return (dx < 0.0f) ? 3 : 4;
 }
 
 /* ---------------------------------------------------------------- Click Wheel Touch Handler */
-static void show_wheel_feedback(ipod_ui_t *ui, int16_t cx, int16_t cy, int16_t sz)
-{
-    lv_obj_set_size(ui->wheel_hl, sz, sz);
-    lv_obj_set_style_radius(ui->wheel_hl, sz / 2, 0);
-    lv_obj_set_pos(ui->wheel_hl, cx - sz / 2, cy - sz / 2);
-    lv_obj_clear_flag(ui->wheel_hl, LV_OBJ_FLAG_HIDDEN);
-}
-
 static void wheel_event_cb(lv_event_t *e)
 {
     ipod_ui_t *ui = (ipod_ui_t *)e->user_data;
@@ -314,12 +521,10 @@ static void wheel_event_cb(lv_event_t *e)
         ui->down_x = px;
         ui->down_y = py;
         ui->wheel_in_center = (r2 <= (float)(WHEEL_R_IN * WHEEL_R_IN));
-        if (ui->wheel_in_center) {
-            show_wheel_feedback(ui, WHEEL_CX, WHEEL_CY, 46);
-        } else {
+        if (!ui->wheel_in_center) {
             ui->prev_angle = fast_atan2f(dy, dx);
-            show_wheel_feedback(ui, px, py, 28);
         }
+        show_quadrant_glow(ui, point_to_quadrant(dx, dy, ui->wheel_in_center));
     } else if (code == LV_EVENT_PRESSING && ui->wheel_down && !ui->wheel_in_center) {
         if (r2 > (float)((WHEEL_R_IN - 4) * (WHEEL_R_IN - 4))) {
             uint32_t now = lv_tick_get();
@@ -346,7 +551,7 @@ static void wheel_event_cb(lv_event_t *e)
                 step_rad = STEP_MED_RAD;
             }
 
-            show_wheel_feedback(ui, px, py, 28);
+            show_quadrant_glow(ui, point_to_quadrant(dx, dy, false));
 
             if (!ui->is_play) {
                 while (ui->accum_angle >= step_rad) {
@@ -377,7 +582,7 @@ static void wheel_event_cb(lv_event_t *e)
         }
     } else if (code == LV_EVENT_RELEASED && ui->wheel_down) {
         ui->wheel_down = false;
-        lv_obj_add_flag(ui->wheel_hl, LV_OBJ_FLAG_HIDDEN);
+        show_quadrant_glow(ui, 0);
 
         if (ui->wheel_in_center) {
             CLICK_SEQ = CLICK_STOP_MAGIC; /* release /dev/audio0 immediately before playing */
@@ -420,119 +625,164 @@ static void row_tap_cb(lv_event_t *e)
     for (int i = 0; i < ROW_COUNT; i++) {
         if (t == ui->row_lbl[i]) {
             ui->sel_idx = (int8_t)i;
-            update_list_colors(ui);
+            update_list_colors(ui, false);
+            CLICK_SEQ = CLICK_STOP_MAGIC;
             view_send_msg(ui->page_id, 4, (uint32_t)i, 4);
             break;
         }
     }
 }
 
-/* ---------------------------------------------------------------- 30ms Animation & Live Sync Timer */
+/* ---------------------------------------------------------------- 16ms (60 FPS) Animation & Sync Timer */
 static void ipod_timer_cb(lv_timer_t *t)
 {
     ipod_ui_t *ui = (ipod_ui_t *)t->user_data;
     if (!ui) return;
 
-    /* 1. Smooth cubic ease-out slide-in on page open (160ms) */
-    if (!ui->anim_done) {
-        uint32_t dt = lv_tick_get() - ui->anim_start_ms;
-        if (dt >= 160u) {
-            lv_obj_set_pos(ui->lcd_body, 0, HDR_H);
-            ui->anim_done = true;
-        } else {
-            float u = 1.0f - ((float)dt / 160.0f);
-            int16_t ox = (int16_t)(44.0f * u * u * u);
-            lv_obj_set_pos(ui->lcd_body, ox, HDR_H);
-        }
-    }
-
     if (ui->is_play) {
         stock_music_play_t *sp = fw_music_play();
         if (!sp) return;
 
-        /* Track counter ("1/253" -> "1 of 253") */
-        const char *cnt = lv_label_get_text_fast(sp->track_cnt);
-        if (rom_strcmp(cnt, ui->last_count) != 0) {
-            char buf[32];
-            fmt_track_of(buf, sizeof(buf), cnt);
-            lv_label_set_text(ui->lbl_count, buf);
-            size_t n = rom_strlen(cnt);
-            if (n >= sizeof(ui->last_count)) n = sizeof(ui->last_count) - 1;
-            rom_memcpy(ui->last_count, cnt, n);
-            ui->last_count[n] = '\0';
-        }
-
-        /* Song Title */
-        const char *ttl = lv_label_get_text_fast(sp->title);
-        if (rom_strcmp(ttl, ui->last_title) != 0) {
-            lv_label_set_text(ui->lbl_title, ttl[0] ? ttl : "Now Playing");
-            size_t n = rom_strlen(ttl);
-            if (n >= sizeof(ui->last_title)) n = sizeof(ui->last_title) - 1;
-            rom_memcpy(ui->last_title, ttl, n);
-            ui->last_title[n] = '\0';
-        }
-
-        /* Artist / Lyrics */
-        const char *art = lv_label_get_text_fast(sp->artist);
-        if (rom_strcmp(art, ui->last_artist) != 0) {
-            lv_label_set_text(ui->lbl_artist, art);
-            size_t n = rom_strlen(art);
-            if (n >= sizeof(ui->last_artist)) n = sizeof(ui->last_artist) - 1;
-            rom_memcpy(ui->last_artist, art, n);
-            ui->last_artist[n] = '\0';
-        }
-
-        /* Elapsed & Remaining Time ("3:41" & "-1:20") */
-        const char *elap = lv_label_get_text_fast(sp->elapsed);
-        const char *tot  = lv_label_get_text_fast(sp->total);
-        if (rom_strcmp(elap, ui->last_elap) != 0 || rom_strcmp(tot, ui->last_tot) != 0) {
-            int es = parse_hms_seconds(elap);
-            int ts = parse_hms_seconds(tot);
-            char eb[16], rb[16];
-            if (es >= 0) {
-                fmt_time(eb, es, false);
-                lv_label_set_text(ui->lbl_elapsed, eb);
+        /* Detect live Play vs Pause state from stock btn_play child label ("\xee\x9a\x8c" = pause) */
+        bool paused = ui->is_paused;
+        if (sp->btn_play) {
+            lv_obj_t *plbl = lv_obj_get_child(sp->btn_play, 0);
+            const char *pt = lv_label_get_text_fast(plbl);
+            if (pt[0] == (char)0xEE) {
+                paused = ((uint8_t)pt[1] == 0x9Au);
             }
-            if (es >= 0 && ts >= es) {
-                fmt_time(rb, ts - es, true);
-                lv_label_set_text(ui->lbl_remain, rb);
-            } else if (ts >= 0) {
-                fmt_time(rb, ts, true);
-                lv_label_set_text(ui->lbl_remain, rb);
-            }
-            size_t n1 = rom_strlen(elap);
-            if (n1 >= sizeof(ui->last_elap)) n1 = sizeof(ui->last_elap) - 1;
-            rom_memcpy(ui->last_elap, elap, n1);
-            ui->last_elap[n1] = '\0';
-            size_t n2 = rom_strlen(tot);
-            if (n2 >= sizeof(ui->last_tot)) n2 = sizeof(ui->last_tot) - 1;
-            rom_memcpy(ui->last_tot, tot, n2);
-            ui->last_tot[n2] = '\0';
+        }
+        if (!ui->last_paused_known || paused != ui->is_paused) {
+            ui->is_paused = paused;
+            ui->last_paused_known = true;
+            lv_img_set_src(ui->ico_state, paused ? &img_ico_pause : &img_ico_play);
+            render_album_sheen(ui);
         }
 
-        /* Smoothly interpolated glossy Aqua progress bar */
+        /* Advance 60 FPS specular sheen phase while playing */
+        if (!ui->is_paused) {
+            ui->sheen_phase += 0.045f;
+            if (ui->sheen_phase > TWO_PI_F * 4.0f) ui->sheen_phase -= TWO_PI_F * 4.0f;
+        }
+
+        /* Sync text metadata every 3rd frame (~20 Hz) to keep 60 FPS frame budget ultra-lean */
+        ui->frame_div++;
+        if ((ui->frame_div & 3u) == 1u) {
+            /* Track counter ("6/15" -> "6 of 15") */
+            const char *cnt = lv_label_get_text_fast(sp->track_cnt);
+            if (rom_strcmp(cnt, ui->last_count) != 0) {
+                char buf[32];
+                fmt_track_of(buf, sizeof(buf), cnt);
+                lv_label_set_text(ui->lbl_count, buf);
+                size_t n = rom_strlen(cnt);
+                if (n >= sizeof(ui->last_count)) n = sizeof(ui->last_count) - 1;
+                rom_memcpy(ui->last_count, cnt, n);
+                ui->last_count[n] = '\0';
+            }
+
+            /* Song Title */
+            const char *ttl = lv_label_get_text_fast(sp->title);
+            if (rom_strcmp(ttl, ui->last_title) != 0) {
+                lv_label_set_text(ui->lbl_title, ttl[0] ? ttl : "Now Playing");
+                size_t n = rom_strlen(ttl);
+                if (n >= sizeof(ui->last_title)) n = sizeof(ui->last_title) - 1;
+                rom_memcpy(ui->last_title, ttl, n);
+                ui->last_title[n] = '\0';
+            }
+
+            /* Artist / Album */
+            const char *art = lv_label_get_text_fast(sp->artist);
+            if (rom_strcmp(art, ui->last_artist) != 0) {
+                lv_label_set_text(ui->lbl_artist, art);
+                size_t n = rom_strlen(art);
+                if (n >= sizeof(ui->last_artist)) n = sizeof(ui->last_artist) - 1;
+                rom_memcpy(ui->last_artist, art, n);
+                ui->last_artist[n] = '\0';
+            }
+
+            /* Elapsed & Remaining Time ("3:41" & "-1:20") */
+            const char *elap = lv_label_get_text_fast(sp->elapsed);
+            const char *tot  = lv_label_get_text_fast(sp->total);
+            if (rom_strcmp(elap, ui->last_elap) != 0 || rom_strcmp(tot, ui->last_tot) != 0) {
+                int es = parse_hms_seconds(elap);
+                int ts = parse_hms_seconds(tot);
+                char eb[16], rb[16];
+                if (es >= 0) {
+                    fmt_time(eb, es, false);
+                    lv_label_set_text(ui->lbl_elapsed, eb);
+                }
+                if (es >= 0 && ts >= es) {
+                    fmt_time(rb, ts - es, true);
+                    lv_label_set_text(ui->lbl_remain, rb);
+                } else if (ts >= 0) {
+                    fmt_time(rb, ts, true);
+                    lv_label_set_text(ui->lbl_remain, rb);
+                }
+                size_t n1 = rom_strlen(elap);
+                if (n1 >= sizeof(ui->last_elap)) n1 = sizeof(ui->last_elap) - 1;
+                rom_memcpy(ui->last_elap, elap, n1);
+                ui->last_elap[n1] = '\0';
+                size_t n2 = rom_strlen(tot);
+                if (n2 >= sizeof(ui->last_tot)) n2 = sizeof(ui->last_tot) - 1;
+                rom_memcpy(ui->last_tot, tot, n2);
+                ui->last_tot[n2] = '\0';
+            }
+        }
+
+        /* 60 FPS sub-pixel Glossy Aqua Progress Bar */
         int32_t bv = lv_bar_get_val_fast(sp->bar);
         int32_t bm = lv_bar_get_max_fast(sp->bar);
         float target_pct = (bm > 0) ? ((float)bv / (float)bm) : 0.0f;
         if (target_pct < 0.0f) target_pct = 0.0f;
         if (target_pct > 1.0f) target_pct = 1.0f;
-        ui->smooth_pct += (target_pct - ui->smooth_pct) * 0.35f;
-        int16_t fw = (int16_t)(ui->smooth_pct * (float)(BAR_W - 2));
-        if (fw < 0) fw = 0;
-        lv_obj_set_width(ui->bar_fill, fw);
+        ui->smooth_pct += (target_pct - ui->smooth_pct) * 0.25f;
+        render_aqua_bar(ui);
+
+        /* 30 FPS glass sheen pass on 3D-tilted album art when playing */
+        if (!ui->is_paused && (ui->frame_div & 1u) == 0u) {
+            render_album_sheen(ui);
+        }
     } else {
+        /* 60 FPS critically damped spring glide for Aqua highlight pill & scrollbar thumb */
+        float target_y = (float)(ui->sel_idx * ROW_H + 2);
+        float diff = target_y - ui->pill_y;
+        if (diff > 0.4f || diff < -0.4f) {
+            ui->pill_y += diff * 0.44f;
+        } else {
+            ui->pill_y = target_y;
+        }
+        int16_t iy = (int16_t)(ui->pill_y + 0.5f);
+        if (iy != ui->last_pill_y) {
+            ui->last_pill_y = iy;
+            lv_obj_set_y(ui->sel_pill, iy);
+        }
+        if (ui->scroll_thumb) {
+            float max_pill = (float)((ROW_COUNT - 1) * ROW_H);
+            float frac = (ui->pill_y - 2.0f) / (max_pill > 1.0f ? max_pill : 1.0f);
+            if (frac < 0.0f) frac = 0.0f;
+            if (frac > 1.0f) frac = 1.0f;
+            int16_t sy = (int16_t)(frac * (float)(SCROLL_H - THUMB_H - 2) + 0.5f);
+            if (sy != ui->last_thumb_y) {
+                ui->last_thumb_y = sy;
+                lv_obj_set_y(ui->scroll_thumb, sy);
+            }
+        }
+
         /* Sync 6 list row labels cleanly from hidden stock page */
-        for (int i = 0; i < ROW_COUNT; i++) {
-            const char *txt = lv_label_get_text_fast(get_stock_row_label(ui->page_id, i));
-            if (rom_strcmp(txt, ui->last_row[i]) != 0) {
-                lv_label_set_text(ui->row_lbl[i], txt);
-                bool has_txt = (txt[0] != '\0' && !(txt[0] == ' ' && txt[1] == '\0'));
-                if (has_txt) lv_obj_clear_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
-                else         lv_obj_add_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
-                size_t n = rom_strlen(txt);
-                if (n >= sizeof(ui->last_row[i])) n = sizeof(ui->last_row[i]) - 1;
-                rom_memcpy(ui->last_row[i], txt, n);
-                ui->last_row[i][n] = '\0';
+        ui->frame_div++;
+        if ((ui->frame_div & 1u) == 1u) {
+            for (int i = 0; i < ROW_COUNT; i++) {
+                const char *txt = lv_label_get_text_fast(get_stock_row_label(ui->page_id, i));
+                if (rom_strcmp(txt, ui->last_row[i]) != 0) {
+                    lv_label_set_text(ui->row_lbl[i], txt);
+                    bool has_txt = (txt[0] != '\0' && !(txt[0] == ' ' && txt[1] == '\0'));
+                    if (has_txt) lv_obj_clear_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
+                    else         lv_obj_add_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
+                    size_t n = rom_strlen(txt);
+                    if (n >= sizeof(ui->last_row[i])) n = sizeof(ui->last_row[i]) - 1;
+                    rom_memcpy(ui->last_row[i], txt, n);
+                    ui->last_row[i][n] = '\0';
+                }
             }
         }
     }
@@ -542,9 +792,18 @@ static void ipod_delete_cb(lv_event_t *e)
 {
     ipod_ui_t *ui = (ipod_ui_t *)e->user_data;
     if (!ui) return;
+    if (ui->lcd_body) lv_anim_del(ui->lcd_body, NULL);
     if (ui->timer) {
         lv_timer_del(ui->timer);
         ui->timer = NULL;
+    }
+    if (ui->art_buf) {
+        lv_mem_free(ui->art_buf);
+        ui->art_buf = NULL;
+    }
+    if (ui->bar_buf) {
+        lv_mem_free(ui->bar_buf);
+        ui->bar_buf = NULL;
     }
     lv_mem_free(ui);
 }
@@ -568,7 +827,8 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     rom_memset(ui, 0, sizeof(ipod_ui_t));
     ui->page_id = page_id;
     ui->is_play = is_play;
-    ui->anim_start_ms = lv_tick_get();
+    ui->last_pill_y = -1;
+    ui->last_thumb_y = -1;
 
     /* Keep stock widgets alive (so CPU0 updates them) but hidden */
     hide_all_children(stock_container);
@@ -598,7 +858,7 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     lv_obj_t *hdr = lv_obj_create(lcd);
     style_clean_box(hdr);
     lv_obj_set_pos(hdr, 0, 0);
-    lv_obj_set_size(hdr, LCD_W - 4, HDR_H);
+    lv_obj_set_size(hdr, BODY_W, HDR_H);
     lv_obj_set_style_bg_color(hdr, lv_rgb(0xF3, 0xF5, 0xF8), 0);
     lv_obj_set_style_bg_grad_color(hdr, lv_rgb(0xC6, 0xCC, 0xD6), 0);
     lv_obj_set_style_bg_grad_dir(hdr, LV_GRAD_DIR_VER, 0);
@@ -606,119 +866,132 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     lv_obj_set_style_border_side(hdr, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_border_color(hdr, lv_rgb(0x92, 0x9A, 0xA6), 0);
 
-    /* Left play triangle indicator */
-    ui->lbl_play_ind = make_label(hdr, ">", lv_rgb(0x28, 0x74, 0xC8), LV_TEXT_ALIGN_LEFT);
-    lv_obj_set_pos(ui->lbl_play_ind, 6, 3);
+    /* Left baked INDEXED_4BIT Play/Pause sprite */
+    ui->ico_state = lv_img_create(hdr);
+    lv_img_set_src(ui->ico_state, &img_ico_play);
+    lv_obj_set_pos(ui->ico_state, 6, 4);
 
     /* Centered header title */
     lv_obj_t *ht = make_label(hdr, hdr_title, lv_rgb(0x14, 0x18, 0x1E), LV_TEXT_ALIGN_CENTER);
     lv_obj_set_width(ht, 140);
     lv_obj_align(ht, LV_ALIGN_CENTER, 0, 0);
 
-    /* Right classic green glossy iPod battery icon */
-    lv_obj_t *bat = lv_obj_create(hdr);
-    style_clean_box(bat);
-    lv_obj_set_pos(bat, LCD_W - 30, 5);
-    lv_obj_set_size(bat, 20, 10);
-    lv_obj_set_style_radius(bat, 2, 0);
-    lv_obj_set_style_bg_color(bat, lv_rgb(0xE8, 0xEC, 0xF0), 0);
-    lv_obj_set_style_border_width(bat, 1, 0);
-    lv_obj_set_style_border_color(bat, lv_rgb(0x48, 0x52, 0x5E), 0);
+    /* Right baked INDEXED_4BIT glossy green iPod Battery sprite */
+    lv_obj_t *bat = lv_img_create(hdr);
+    lv_img_set_src(bat, &img_ico_battery);
+    lv_obj_set_pos(bat, BODY_W - 28, 4);
 
-    lv_obj_t *bat_fill = lv_obj_create(bat);
-    style_clean_box(bat_fill);
-    lv_obj_set_pos(bat_fill, 1, 1);
-    lv_obj_set_size(bat_fill, 16, 6);
-    lv_obj_set_style_bg_color(bat_fill, lv_rgb(0x64, 0xE0, 0x72), 0);
-    lv_obj_set_style_bg_grad_color(bat_fill, lv_rgb(0x28, 0x9C, 0x38), 0);
-    lv_obj_set_style_bg_grad_dir(bat_fill, LV_GRAD_DIR_VER, 0);
-
-    lv_obj_t *bat_nub = lv_obj_create(hdr);
-    style_clean_box(bat_nub);
-    lv_obj_set_pos(bat_nub, LCD_W - 10, 7);
-    lv_obj_set_size(bat_nub, 2, 6);
-    lv_obj_set_style_bg_color(bat_nub, lv_rgb(0x48, 0x52, 0x5E), 0);
-
-    /* 4. Animated inner LCD body (slides in smoothly from right) */
+    /* 4. Inner LCD body — animated via LVGL built-in lv_anim horizontal slide-in! */
     lv_obj_t *body = lv_obj_create(lcd);
     ui->lcd_body = body;
     style_clean_box(body);
-    lv_obj_set_pos(body, 44, HDR_H);
-    lv_obj_set_size(body, LCD_W - 4, LCD_H - HDR_H - 4);
+    lv_obj_set_pos(body, BODY_W, HDR_H);
+    lv_obj_set_size(body, BODY_W, BODY_H);
     lv_obj_set_style_bg_color(body, lv_rgb(0xFF, 0xFF, 0xFF), 0);
 
+    lv_anim_t slide;
+    lv_anim_init(&slide);
+    slide.var = body;
+    slide.exec_cb = anim_set_x_cb;
+    slide.path_cb = LV_ANIM_PATH_EASE_OUT;
+    slide.start_value = 180;
+    slide.end_value = 0;
+    slide.time = 180;
+    lv_anim_start(&slide);
+
     if (is_play) {
-        /* ---- NOW PLAYING SCREEN (matches blue iPod Mini/Nano photo!) ---- */
-        ui->lbl_count = make_label(body, "1 of 1", lv_rgb(0x20, 0x24, 0x2A), LV_TEXT_ALIGN_LEFT);
-        lv_obj_set_pos(ui->lbl_count, 8, 3);
+        /* ---- 60 FPS NOW PLAYING SCREEN ---- */
+        ui->lbl_count = make_label(body, "1 of 1", lv_rgb(0x28, 0x2E, 0x36), LV_TEXT_ALIGN_LEFT);
+        lv_obj_set_pos(ui->lbl_count, 8, 2);
 
-        /* Album art (64x64) */
-        lv_obj_t *art = lv_img_create(body);
-        lv_img_set_src(art, &img_album_default);
-        lv_obj_set_pos(art, 8, 21);
+        /* 3D-tilted Album Art + Glossy Floor Reflection (62x72 direct RAM buffer w/ sheen) */
+        ui->img_art = lv_img_create(body);
+        lv_obj_set_pos(ui->img_art, 6, 17);
+        ui->art_buf = (uint8_t *)lv_mem_alloc(ALBUM_ART_BYTES);
+        if (ui->art_buf) {
+            rom_memcpy(ui->art_buf, img_album_default_map, ALBUM_ART_BYTES);
+            ui->art_dsc.header = LV_IMG_HEADER(LV_IMG_CF_INDEXED_8BIT, ALBUM_ART_W, ALBUM_ART_H);
+            ui->art_dsc.data_size = ALBUM_ART_BYTES;
+            ui->art_dsc.data = ui->art_buf;
+            lv_img_set_src(ui->img_art, &ui->art_dsc);
+        } else {
+            lv_img_set_src(ui->img_art, &img_album_default);
+        }
 
-        /* Song Title & Artist on right of album art */
+        /* Song Title & Artist on right of 3D album art */
         ui->lbl_title = make_label(body, "Now Playing", lv_rgb(0x10, 0x12, 0x16), LV_TEXT_ALIGN_LEFT);
         lv_label_set_long_mode(ui->lbl_title, LV_LABEL_LONG_SCROLL_CIRCULAR);
-        lv_obj_set_width(ui->lbl_title, 136);
-        lv_obj_set_pos(ui->lbl_title, 80, 26);
+        lv_obj_set_width(ui->lbl_title, 140);
+        lv_obj_set_pos(ui->lbl_title, 76, 24);
 
-        ui->lbl_artist = make_label(body, "", lv_rgb(0x38, 0x40, 0x4A), LV_TEXT_ALIGN_LEFT);
+        ui->lbl_artist = make_label(body, "", lv_rgb(0x40, 0x48, 0x54), LV_TEXT_ALIGN_LEFT);
         lv_label_set_long_mode(ui->lbl_artist, LV_LABEL_LONG_SCROLL_CIRCULAR);
-        lv_obj_set_width(ui->lbl_artist, 136);
-        lv_obj_set_pos(ui->lbl_artist, 80, 50);
+        lv_obj_set_width(ui->lbl_artist, 140);
+        lv_obj_set_pos(ui->lbl_artist, 76, 48);
 
-        /* Glossy Blue Aqua Progress Bar */
-        lv_obj_t *bar_bg = lv_obj_create(body);
-        style_clean_box(bar_bg);
-        lv_obj_set_pos(bar_bg, 8, 90);
-        lv_obj_set_size(bar_bg, BAR_W, 11);
-        lv_obj_set_style_radius(bar_bg, 3, 0);
-        lv_obj_set_style_bg_color(bar_bg, lv_rgb(0xE4, 0xE9, 0xEF), 0);
-        lv_obj_set_style_bg_grad_color(bar_bg, lv_rgb(0xFA, 0xFC, 0xFF), 0);
-        lv_obj_set_style_bg_grad_dir(bar_bg, LV_GRAD_DIR_VER, 0);
-        lv_obj_set_style_border_width(bar_bg, 1, 0);
-        lv_obj_set_style_border_color(bar_bg, lv_rgb(0xB0, 0xB8, 0xC4), 0);
-
-        ui->bar_fill = lv_obj_create(bar_bg);
-        style_clean_box(ui->bar_fill);
-        lv_obj_set_pos(ui->bar_fill, 0, 0);
-        lv_obj_set_size(ui->bar_fill, 0, 9);
-        lv_obj_set_style_bg_color(ui->bar_fill, lv_rgb(0x78, 0xC4, 0xFC), 0);
-        lv_obj_set_style_bg_grad_color(ui->bar_fill, lv_rgb(0x26, 0x76, 0xE2), 0);
-        lv_obj_set_style_bg_grad_dir(ui->bar_fill, LV_GRAD_DIR_VER, 0);
+        /* 60 FPS Direct Pixel-Buffer Glossy Aqua Progress Bar (208x11) */
+        ui->img_bar = lv_img_create(body);
+        lv_obj_set_pos(ui->img_bar, 8, 91);
+        ui->bar_buf = (uint8_t *)lv_mem_alloc(BAR_BUF_BYTES);
+        if (ui->bar_buf) {
+            init_bar_palette(ui->bar_buf);
+            ui->bar_dsc.header = LV_IMG_HEADER(LV_IMG_CF_INDEXED_8BIT, BAR_W, BAR_H);
+            ui->bar_dsc.data_size = BAR_BUF_BYTES;
+            ui->bar_dsc.data = ui->bar_buf;
+            lv_img_set_src(ui->img_bar, &ui->bar_dsc);
+            render_aqua_bar(ui);
+        }
 
         /* Elapsed (left) & Remaining (right) */
         ui->lbl_elapsed = make_label(body, "0:00", lv_rgb(0x18, 0x1C, 0x22), LV_TEXT_ALIGN_LEFT);
-        lv_obj_set_pos(ui->lbl_elapsed, 8, 104);
+        lv_obj_set_pos(ui->lbl_elapsed, 8, 103);
 
         ui->lbl_remain = make_label(body, "-0:00", lv_rgb(0x18, 0x1C, 0x22), LV_TEXT_ALIGN_RIGHT);
         lv_obj_set_width(ui->lbl_remain, 80);
-        lv_obj_set_pos(ui->lbl_remain, LCD_W - 92, 104);
+        lv_obj_set_pos(ui->lbl_remain, BODY_W - 88, 103);
     } else {
-        /* ---- CLASSIC iPOD BROWSE LIST (Music / Songs / Artists / Albums) ---- */
+        /* ---- 60 FPS CLASSIC iPOD BROWSE LIST (Music / Songs / Artists / Albums) ---- */
         ui->sel_pill = lv_obj_create(body);
         style_clean_box(ui->sel_pill);
-        lv_obj_set_pos(ui->sel_pill, 0, 0);
-        lv_obj_set_size(ui->sel_pill, LCD_W - 4, ROW_H);
+        lv_obj_set_pos(ui->sel_pill, 0, 2);
+        lv_obj_set_size(ui->sel_pill, SCROLL_X - 2, ROW_H);
         lv_obj_set_style_bg_color(ui->sel_pill, lv_rgb(0x5C, 0xA9, 0xF8), 0);
         lv_obj_set_style_bg_grad_color(ui->sel_pill, lv_rgb(0x1E, 0x6A, 0xD4), 0);
         lv_obj_set_style_bg_grad_dir(ui->sel_pill, LV_GRAD_DIR_VER, 0);
 
+        /* Classic iPod right-edge recessed scrollbar track & smooth Aqua thumb */
+        lv_obj_t *sb_trk = lv_obj_create(body);
+        style_clean_box(sb_trk);
+        lv_obj_set_pos(sb_trk, SCROLL_X, 2);
+        lv_obj_set_size(sb_trk, SCROLL_W, SCROLL_H);
+        lv_obj_set_style_bg_color(sb_trk, lv_rgb(0xE8, 0xEC, 0xF2), 0);
+        lv_obj_set_style_border_width(sb_trk, 1, 0);
+        lv_obj_set_style_border_color(sb_trk, lv_rgb(0xB8, 0xC0, 0xCC), 0);
+        lv_obj_set_style_radius(sb_trk, 2, 0);
+
+        ui->scroll_thumb = lv_obj_create(sb_trk);
+        style_clean_box(ui->scroll_thumb);
+        lv_obj_set_pos(ui->scroll_thumb, 0, 0);
+        lv_obj_set_size(ui->scroll_thumb, SCROLL_W - 2, THUMB_H);
+        lv_obj_set_style_radius(ui->scroll_thumb, 2, 0);
+        lv_obj_set_style_bg_color(ui->scroll_thumb, lv_rgb(0x5A, 0xA6, 0xF4), 0);
+        lv_obj_set_style_bg_grad_color(ui->scroll_thumb, lv_rgb(0x28, 0x72, 0xD6), 0);
+        lv_obj_set_style_bg_grad_dir(ui->scroll_thumb, LV_GRAD_DIR_HOR, 0);
+
         for (int i = 0; i < ROW_COUNT; i++) {
             lv_obj_t *lbl = make_label(body, "", lv_rgb(0x14, 0x18, 0x1F), LV_TEXT_ALIGN_LEFT);
             lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-            lv_obj_set_size(lbl, LCD_W - 26, ROW_H - 2);
-            lv_obj_set_pos(lbl, 8, (lv_coord_t)(i * ROW_H + 2));
+            lv_obj_set_size(lbl, SCROLL_X - 24, ROW_H - 2);
+            lv_obj_set_pos(lbl, 7, (lv_coord_t)(i * ROW_H + 3));
             lv_obj_add_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_add_event_cb(lbl, row_tap_cb, LV_EVENT_CLICKED, ui);
             ui->row_lbl[i] = lbl;
 
             lv_obj_t *ch = make_label(body, ">", lv_rgb(0x9A, 0xA4, 0xB2), LV_TEXT_ALIGN_RIGHT);
-            lv_obj_set_pos(ch, LCD_W - 18, (lv_coord_t)(i * ROW_H + 2));
+            lv_obj_set_pos(ch, SCROLL_X - 15, (lv_coord_t)(i * ROW_H + 3));
             ui->row_chev[i] = ch;
         }
-        update_list_colors(ui);
+        update_list_colors(ui, true);
     }
 
     /* 5. Iconic White & Blue Click Wheel (156x156 pre-rendered anti-aliased) */
@@ -726,12 +999,11 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     lv_img_set_src(wheel, &img_clickwheel);
     lv_obj_set_pos(wheel, WHEEL_X, WHEEL_Y);
 
-    /* Subtle translucent touch feedback ring */
-    ui->wheel_hl = lv_obj_create(root);
-    style_clean_box(ui->wheel_hl);
-    lv_obj_set_style_bg_color(ui->wheel_hl, lv_rgb(0x38, 0x90, 0xF0), 0);
-    lv_obj_set_style_bg_opa(ui->wheel_hl, 85, 0);
-    lv_obj_add_flag(ui->wheel_hl, LV_OBJ_FLAG_HIDDEN);
+    /* Baked INDEXED_4BIT Click Wheel quadrant tactile press glow (55% opacity) */
+    ui->wheel_glow = lv_img_create(root);
+    lv_img_set_src(ui->wheel_glow, &img_glow_center);
+    lv_obj_set_style_opa(ui->wheel_glow, 140, 0);
+    lv_obj_add_flag(ui->wheel_glow, LV_OBJ_FLAG_HIDDEN);
 
     /* Full-bottom invisible touch catcher over Click Wheel */
     lv_obj_t *touch = lv_obj_create(root);
@@ -742,8 +1014,8 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
     lv_obj_add_flag(touch, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(touch, wheel_event_cb, LV_EVENT_ALL, ui);
 
-    /* 6. Start 30ms (~33 fps) animation & live data sync timer */
-    ui->timer = lv_timer_create(ipod_timer_cb, 30, ui);
+    /* 6. Start 16ms (60 FPS) animation & live data sync timer */
+    ui->timer = lv_timer_create(ipod_timer_cb, 16, ui);
 }
 
 /* ---------------------------------------------------------------- Hooked Page Constructors */
