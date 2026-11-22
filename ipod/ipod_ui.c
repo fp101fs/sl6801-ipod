@@ -260,7 +260,6 @@ static void list_step(ipod_ui_t *ui, int dir)
     } else {
         ui->sel_idx = (int8_t)next;
     }
-    CLICK_SEQ++;
     update_list_colors(ui);
 }
 
@@ -326,12 +325,10 @@ static void wheel_event_cb(lv_event_t *e)
                 if (ui->accum_angle >= 1.15f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
-                    CLICK_SEQ++;
                     view_send_msg(4, 5, 2, 4); /* Next */
                 } else if (ui->accum_angle <= -1.15f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
-                    CLICK_SEQ++;
                     view_send_msg(4, 5, 0, 4); /* Prev */
                 }
             }
