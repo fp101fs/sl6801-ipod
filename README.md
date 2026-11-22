@@ -145,10 +145,10 @@ sl6801-ipod/
 │   ├── sl6801_sensitive.bin     # Touch-sensitivity patched firmware
 │   └── sl6801_ipod.bin          # Full Blue iPod Classic + Click Wheel + Apple splash firmware
 ├── ipod/
-│   ├── fw_240x320.h             # Verified LVGL 8.3 / ROM / OS / Presenter symbol map
-│   ├── ipod_ui.c                # Blue iPod Classic UI + Polar Click Wheel + CPU0 ClickTask
+│   ├── fw_240x320.h             # Verified LVGL 8.3 / lv_anim / ROM math / OS / Presenter symbol map
+│   ├── ipod_ui.c                # 60 FPS Blue iPod Classic UI (v2) + Polar Click Wheel + CPU0 ClickTask
 │   ├── ipod.ld                  # Linker script targeting 128 KB free cave (0x00C19000)
-│   ├── gen_assets.py            # 4x supersampled Click Wheel, Album Art & 44.1 kHz PCM generator
+│   ├── gen_assets.py            # 4x supersampled Click Wheel, 3D Album Art, INDEXED_4BIT sprites & 44.1 kHz PCM
 │   └── build_ipod.py            # End-to-end Zig Cortex-M4F build, patch & CRC16 script
 ├── scripts/
 │   ├── patch_sensitivity.py     # Standalone touch-sensitivity patcher
