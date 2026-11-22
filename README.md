@@ -101,7 +101,14 @@ Built from [ipod/ipod_ui.c](ipod/ipod_ui.c) + [ipod/build_ipod.py](ipod/build_ip
   - **Baked `INDEXED_4BIT` Sprite Sheet:** Crisp 4× supersampled Play (`▶`) / Pause (`❚❚`) live header status sprites, classic glossy green Battery sprite, and 5 Click Wheel quadrant tactile press glow sprites (`MENU`, `|<<`, `>>|`, `>||`, Center).
 - **Authentic Click Wheel Mechanics:** Smooth, paced polar scrolling (~16.5 ticks/rev slow → ~22 med → ~27 fast, 22 ms anti-skip pacing for crisp per-item clicks); `MENU` goes back, `|<<`/`>>|` skips tracks on Now Playing or moves selection up/down on browse lists, Center selects (or opens Settings on Now Playing), and `>||` toggles Play/Pause on Now Playing or plays/enters the highlighted item on browse lists.
 - **Click Wheel Audio:** Plays [assets/clickwheel.mp3](assets/clickwheel.mp3) (44.1 kHz soft-limited PCM, `peak=7724`, via CPU0 `ClickTask` hooked at `fw_watchdog_setup` `0x00D4E866`, with 23 ms Class-D amp pre-roll and 1.5 s keep-alive to prevent mid-spin amp pops, releasing `/dev/audio0` immediately on Play/Select).
-- **Current Build Checksum:** `firmware/sl6801_ipod.bin` — **`v2.1`**, `FIRM CRC16: 0x46EA` (45.7 KB injected code & assets + 4.7 KB Apple boot logo inside the 128 KB free cave).
+- **Current Build Checksum:** `firmware/sl6801_ipod.bin` — **`v2.1` (Verified Hardware Milestone)**, `FIRM CRC16: 0x46EA` (45.7 KB injected code & assets + 4.7 KB Apple boot logo inside the 128 KB free cave).
+
+### Milestone: `v2.1` — 60 FPS Apple-Grade Blue iPod Classic UI (Verified on Hardware)
+- Silky `180 ms` cubic ease-out horizontal page transitions (`lv_anim` + completion guard).
+- Ultra-smooth 60 FPS time-based `115 ms` cubic ease-out Aqua blue selection highlight glide (`10 ms` browse timer, zero white-on-white flash, deferred marquee activation, crisp right-edge scrollbar thumb, horizontal-only marquee scrolling).
+- 60 FPS Now Playing with 3D-tilted Album Art + glossy floor reflection + animated glass sheen (`rom_sinf`), real-time glossy Aqua progress bar with sub-pixel interpolation & shimmer, and live Play/Pause/Battery/Click Wheel quadrant `INDEXED_4BIT` sprites.
+- Dialed-in polar Click Wheel feel (`~16.5 → 22 → 27` ticks/rev, `22 ms` anti-skip pacing, `|<<`/`>>|` list navigation, subtle 50% volume soft-limited click audio with `23 ms` amp pre-roll).
+- `55×68` centered Apple logo boot splash (`0x028000`) and CST726 touch sensitivity patch (`reg 0x80 = 0x10`, `scroll_limit = 20`) intact.
 - **Touch Sensitivity Patch (`firmware/sl6801_sensitive.bin` & baked into `sl6801_ipod.bin`):**
   1. **`0x1BD560` (`drv_tp_open`):** Writes **I2C `0x38` reg `0x80 = 0x10`** (softer CST726 touch threshold).
   2. **`0x1BD5EC` (`drv_tp_ioctl` wake):** Re-applies `reg 0x80 = 0x10` on every screen wake.
