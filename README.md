@@ -89,15 +89,22 @@ Parsed with `python3 reference/SL6801_player/tools/slfw.py firmware/sl6801_backu
 
 ---
 
-## 5. Touch Sensitivity Patch (`firmware/sl6801_sensitive.bin`)
+## 5. Custom Blue iPod Classic Firmware (`firmware/sl6801_ipod.bin`)
 
-The stock `drv_tp_open` never writes the CST726 touch threshold register (`0x80` / `TH_GROUP`), leaving the screen stiff.
+Built from [ipod/ipod_ui.c](ipod/ipod_ui.c) + [ipod/build_ipod.py](ipod/build_ipod.py) (compiled via `ziglang` for ARM Cortex-M4F Thumb-2 and injected into the 128 KB free cave at `0x019000`):
 
-`scripts/patch_sensitivity.py` applies 3 surgical patches (only 3 × 4 KB sectors modified):
-1. **`0x1BD560` (`drv_tp_open`):** Replaces unused debug `printf` calls with `tp_set_sensitivity()`, writing **I2C `0x38` reg `0x80 = 0x10`** (softer touch threshold).
-2. **`0x1BD5EC` (`drv_tp_ioctl` wake):** Calls `tp_set_sensitivity()` after every screen wake reset.
-3. **`0x1ADC94` (`lv_indev_drv_init`):** Increases LVGL `scroll_limit` from `10` px to `20` px so light taps with tiny finger jitter register as clicks instead of scrolls.
-4. **`0x00D01C`:** Updates `FIRM` CRC16 (`0xC56E` → `0x39F9`).
+- **Power-On Splash Screen:** Replaces the stock `welcome` banner (`0x0FDC8C`) with the centered Apple logo ([assets/splash.png](assets/splash.png)) on a pure black background.
+- **Blue iPod Classic UI + Polar-Angle Touch Click Wheel:** Replaces all 5 music screens (`Music`, `Songs`, `Now Playing`, `Artists`, `Albums`) with an anodized blue iPod shell, crisp white LCD, silver brushed header, green battery icon, glossy Aqua blue progress bar, and transparent 4× anti-aliased Click Wheel.
+- **Click Wheel Audio:** Plays [assets/clickwheel.mp3](assets/clickwheel.mp3) (44.1 kHz PCM via CPU0 `ClickTask` hooked at `fw_watchdog_setup` `0x00D4E866`) when turning the wheel.
+- **Touch Sensitivity Patch (`firmware/sl6801_sensitive.bin` & baked into `sl6801_ipod.bin`):**
+  1. **`0x1BD560` (`drv_tp_open`):** Writes **I2C `0x38` reg `0x80 = 0x10`** (softer CST726 touch threshold).
+  2. **`0x1BD5EC` (`drv_tp_ioctl` wake):** Re-applies `reg 0x80 = 0x10` on every screen wake.
+  3. **`0x1ADC94` (`lv_indev_drv_init`):** Increases LVGL `scroll_limit` from `10` px to `20` px.
+
+### Rebuilding
+```bash
+.venv/bin/python ipod/build_ipod.py
+```
 
 ### Flashing & Recovery
 1. **Enter bootloader mode (`301a:2800`):** Power the player completely off, **hold down the `VOLUME UP` key ONLY** before plugging in USB-C, and keep holding it while plugging in the cable.

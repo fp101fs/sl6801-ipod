@@ -108,6 +108,52 @@ def crc16_ccitt_false(buf: bytes) -> int:
     return crc
 
 
+def apply_apple_splash(patched: bytearray) -> None:
+    """Replace the stock 'welcome' splash descriptor at 0x0fdc8c with assets/splash.png
+    (cropped Apple logo, centered on pure #000000 black, stored at 0x028000 inside free cave)."""
+    from PIL import Image
+
+    splash_path = os.path.join(REPO_DIR, "assets", "splash.png")
+    if not os.path.exists(splash_path):
+        print("  (assets/splash.png not found; keeping stock welcome splash)")
+        return
+
+    im = Image.open(splash_path).convert("RGBA")
+    bbox = im.getbbox()
+    if bbox:
+        im = im.crop(bbox)
+    # Fit cleanly to max 112x136 preserving exact Apple logo aspect ratio
+    max_w, max_h = 112, 136
+    scale = min(max_w / im.width, max_h / im.height)
+    nw = max(1, int(round(im.width * scale)))
+    nh = max(1, int(round(im.height * scale)))
+    im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+
+    # Composite onto pure black (#000000)
+    bg = Image.new("RGB", (nw, nh), (0, 0, 0))
+    bg.paste(im, mask=im.split()[3])
+    pal_img = bg.quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+    raw_pal = list(pal_img.getpalette())
+    raw_pal += [0] * (768 - len(raw_pal))
+    pixels = bytes(pal_img.getdata())
+
+    buf = bytearray()
+    for i in range(256):
+        r, g, b = raw_pal[i * 3 : i * 3 + 3]
+        buf += bytes((b, g, r, 0xFF))
+    buf += pixels
+
+    splash_off = 0x028000
+    assert splash_off + len(buf) <= INJECT_OFF + INJECT_MAX, "Splash image exceeds free cave!"
+    assert all(b == 0 for b in patched[splash_off : splash_off + len(buf)]), "Splash cave not empty!"
+    patched[splash_off : splash_off + len(buf)] = buf
+
+    # Patch the 12-byte lv_img_dsc_t at 0x0fdc8c (stock 'welcome' banner)
+    hdr = 10 | (nw << 10) | (nh << 21)  # LV_IMG_CF_INDEXED_8BIT = 10
+    struct.pack_into("<III", patched, 0x0FDC8C, hdr, len(buf), FLASH_BASE + splash_off)
+    print(f"  Patched power-on splash at 0x0fdc8c -> Apple logo {nw}x{nh} ({len(buf)} bytes at 0x{splash_off:06x})")
+
+
 def apply_sensitivity_patch(patched: bytearray, th_val: int = 0x10, scroll_limit: int = 20) -> None:
     imm16 = (th_val << 8) | 0x80
     movw_r3 = struct.pack(
@@ -200,7 +246,8 @@ def main() -> None:
         patched[file_off : file_off + 4] = encode_bl(bl_vma, target)
         print(f"  Hooked {sym}: BL at 0x{bl_vma:08x} (0x{expect_vma:08x} -> 0x{target:08x})")
 
-    # Apply touch sensitivity patch
+    # Apply Apple logo power-on splash & touch sensitivity patch
+    apply_apple_splash(patched)
     apply_sensitivity_patch(patched, th_val=0x10, scroll_limit=20)
 
     # Recompute FIRM CRC16

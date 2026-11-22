@@ -159,7 +159,7 @@ def write_click_pcm_header(mp3_path: str, out_path: str) -> None:
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
         wav_path = tf.name
     try:
-        subprocess.check_call(["afconvert", "-f", "WAVE", "-d", "LEI16@22050", "-c", "1", mp3_path, wav_path])
+        subprocess.check_call(["afconvert", "-f", "WAVE", "-d", "LEI16@44100", "-c", "1", mp3_path, wav_path])
         with wave.open(wav_path, "rb") as w:
             raw = w.readframes(w.getnframes())
     finally:
@@ -168,24 +168,24 @@ def write_click_pcm_header(mp3_path: str, out_path: str) -> None:
 
     samples = list(struct.unpack(f"<{len(raw) // 2}h", raw))
     peak = max(abs(s) for s in samples) or 1
-    # Trim leading silence right up to 2% of peak, take 768 samples (3 x 256-frame periods = 34.8ms)
+    # Trim leading silence right up to 2% of peak, take 1536 samples (6 x 256-frame periods @ 44.1kHz = 34.8ms)
     start = next((i for i, s in enumerate(samples) if abs(s) > peak * 0.02), 0)
-    start = max(0, start - 8)
-    clip = samples[start : start + 768]
-    while len(clip) < 768:
+    start = max(0, start - 16)
+    clip = samples[start : start + 1536]
+    while len(clip) < 1536:
         clip.append(0)
-    # Normalize to crisp, comfortable iPod click level (~24000 peak)
-    scale = 24000.0 / peak
+    # Normalize to crisp, clearly audible iPod click level (peak ~30000)
+    scale = 30000.0 / peak
     norm = [max(-32767, min(32767, int(round(s * scale)))) for s in clip]
 
     with open(out_path, "w") as f:
         f.write("#pragma once\n#include <stdint.h>\n\n")
-        f.write("#define CLICK_PCM_LEN 768\n")
+        f.write("#define CLICK_PCM_LEN 1536\n")
         f.write("static const int16_t click_pcm[CLICK_PCM_LEN] = {\n")
         for off in range(0, len(norm), 12):
             f.write("  " + ",".join(str(v) for v in norm[off : off + 12]) + ",\n")
         f.write("};\n")
-    print(f"Generated {out_path} ({len(norm)} samples @ 22050 Hz, {len(norm) * 2} bytes)")
+    print(f"Generated {out_path} ({len(norm)} samples @ 44100 Hz, {len(norm) * 2} bytes)")
 
 
 if __name__ == "__main__":

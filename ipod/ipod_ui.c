@@ -192,11 +192,11 @@ typedef struct {
     char last_tot[16];
 
     /* List widgets (Music Menu / Songs / Artists / Albums) */
-    lv_obj_t *sel_pill;          /* smooth-gliding Aqua blue highlight bar */
+    lv_obj_t *sel_pill;          /* crisp iPod Aqua blue highlight bar */
     lv_obj_t *row_lbl[ROW_COUNT];
     lv_obj_t *row_chev[ROW_COUNT];
     int8_t sel_idx;
-    float sel_y_cur;
+    uint32_t page_flip_ms;
     char last_row[ROW_COUNT][64];
 } ipod_ui_t;
 
@@ -230,32 +230,41 @@ static void update_list_colors(ipod_ui_t *ui)
     lv_color_t white = lv_rgb(0xFF, 0xFF, 0xFF);
     lv_color_t dark  = lv_rgb(0x14, 0x18, 0x1F);
     lv_color_t gray  = lv_rgb(0x9A, 0xA4, 0xB2);
+    lv_obj_set_pos(ui->sel_pill, 0, (lv_coord_t)(ui->sel_idx * ROW_H));
     for (int i = 0; i < ROW_COUNT; i++) {
         bool sel = (i == ui->sel_idx);
         lv_obj_set_style_text_color(ui->row_lbl[i], sel ? white : dark, 0);
         lv_obj_set_style_text_color(ui->row_chev[i], sel ? white : gray, 0);
+        lv_label_set_long_mode(ui->row_lbl[i], sel ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_DOT);
     }
 }
 
 static void list_step(ipod_ui_t *ui, int dir)
 {
     int n = count_valid_rows(ui->page_id);
+    if (ui->page_id != 2) n = ROW_COUNT; /* avoid premature page flip while CPU0 refreshes rows */
     int next = ui->sel_idx + dir;
+    uint32_t now = lv_tick_get();
+
     if (next >= n) {
         if (ui->page_id != 2) {
-            /* Next page in Songs / Artists / Albums */
-            view_send_msg(ui->page_id, 6, 0, 0x16);
+            if (now - ui->page_flip_ms < 260u) return;
+            ui->page_flip_ms = now;
+            view_send_msg(ui->page_id, 6, 0, 0x16); /* Next page */
             ui->sel_idx = 0;
         } else {
             ui->sel_idx = (int8_t)(n - 1);
+            return;
         }
     } else if (next < 0) {
         if (ui->page_id != 2) {
-            /* Prev page in Songs / Artists / Albums */
-            view_send_msg(ui->page_id, 6, 0, 0x17);
+            if (now - ui->page_flip_ms < 260u) return;
+            ui->page_flip_ms = now;
+            view_send_msg(ui->page_id, 6, 0, 0x17); /* Prev page */
             ui->sel_idx = (int8_t)(ROW_COUNT - 1);
         } else {
             ui->sel_idx = 0;
+            return;
         }
     } else {
         ui->sel_idx = (int8_t)next;
@@ -482,16 +491,14 @@ static void ipod_timer_cb(lv_timer_t *t)
         if (fw < 0) fw = 0;
         lv_obj_set_width(ui->bar_fill, fw);
     } else {
-        /* Smooth gliding blue selection pill */
-        float target_y = (float)(ui->sel_idx * ROW_H);
-        ui->sel_y_cur += (target_y - ui->sel_y_cur) * 0.42f;
-        lv_obj_set_pos(ui->sel_pill, 0, (lv_coord_t)(ui->sel_y_cur + 0.5f));
-
-        /* Sync 6 list row labels from hidden stock page */
+        /* Sync 6 list row labels cleanly from hidden stock page */
         for (int i = 0; i < ROW_COUNT; i++) {
             const char *txt = lv_label_get_text_fast(get_stock_row_label(ui->page_id, i));
             if (rom_strcmp(txt, ui->last_row[i]) != 0) {
                 lv_label_set_text(ui->row_lbl[i], txt);
+                bool has_txt = (txt[0] != '\0' && !(txt[0] == ' ' && txt[1] == '\0'));
+                if (has_txt) lv_obj_clear_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
+                else         lv_obj_add_flag(ui->row_chev[i], LV_OBJ_FLAG_HIDDEN);
                 size_t n = rom_strlen(txt);
                 if (n >= sizeof(ui->last_row[i])) n = sizeof(ui->last_row[i]) - 1;
                 rom_memcpy(ui->last_row[i], txt, n);
@@ -670,15 +677,15 @@ static void build_ipod_shell(lv_obj_t *stock_container, uint8_t page_id, const c
 
         for (int i = 0; i < ROW_COUNT; i++) {
             lv_obj_t *lbl = make_label(body, "", lv_rgb(0x14, 0x18, 0x1F), LV_TEXT_ALIGN_LEFT);
-            lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
-            lv_obj_set_size(lbl, LCD_W - 24, ROW_H);
-            lv_obj_set_pos(lbl, 8, (lv_coord_t)(i * ROW_H + 3));
+            lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+            lv_obj_set_size(lbl, LCD_W - 26, ROW_H - 2);
+            lv_obj_set_pos(lbl, 8, (lv_coord_t)(i * ROW_H + 2));
             lv_obj_add_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_add_event_cb(lbl, row_tap_cb, LV_EVENT_CLICKED, ui);
             ui->row_lbl[i] = lbl;
 
             lv_obj_t *ch = make_label(body, ">", lv_rgb(0x9A, 0xA4, 0xB2), LV_TEXT_ALIGN_RIGHT);
-            lv_obj_set_pos(ch, LCD_W - 18, (lv_coord_t)(i * ROW_H + 3));
+            lv_obj_set_pos(ch, LCD_W - 18, (lv_coord_t)(i * ROW_H + 2));
             ui->row_chev[i] = ch;
         }
         update_list_colors(ui);
@@ -777,8 +784,9 @@ static void click_audio_task(void *arg)
     (void)arg;
     int16_t buf[256 * 2] __attribute__((aligned(4)));
     uint32_t last_seq = CLICK_SEQ;
+    /* 44100 Hz, 2ch, 16-bit, 256 frames/period, 8 periods (~46ms ring), speaker amp callback */
     static const uint32_t params[10] = {
-        2, 2, 22050, 256, 4, 0, 0, 0, FW_AUDIO_PA_CB, 0
+        2, 2, 44100, 256, 8, 0, 0, 0, FW_AUDIO_PA_CB, 0
     };
 
     for (;;) {
@@ -797,10 +805,16 @@ static void click_audio_task(void *arg)
         void *dev = fw_dev_open("/dev/audio0", 0, params);
         if (!dev) continue;
 
-        /* Stream click sample; restart immediately if wheel keeps spinning! */
+        /* 8 silent pre-roll periods (~46ms) so Class-D speaker amp is 100% awake & unmuted */
+        rom_memset(buf, 0, sizeof(buf));
+        for (int pre = 0; pre < 8; pre++) {
+            fw_dev_write(dev, buf, 256, 0);
+        }
+
+        /* Stream click sample; stay open ~350ms (60 periods) so rapid spins tick with 0ms lag! */
         int pos = 0;
         int idle_periods = 0;
-        while (idle_periods < 6) {
+        while (idle_periods < 60) {
             if (CLICK_SEQ != last_seq) {
                 last_seq = CLICK_SEQ;
                 pos = 0;
@@ -817,8 +831,8 @@ static void click_audio_task(void *arg)
             fw_dev_write(dev, buf, 256, 0);
         }
 
-        /* Drain ring and close immediately so music playback always gets /dev/audio0 */
-        fw_os_sleep(55);
+        /* Drain ring and close cleanly so music playback always gets /dev/audio0 */
+        fw_os_sleep(60);
         fw_dev_close(&dev);
     }
 }
