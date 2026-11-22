@@ -5,6 +5,10 @@ as LVGL 8.3 LV_IMG_CF_INDEXED_8BIT C headers.
 """
 import math
 import os
+import struct
+import subprocess
+import tempfile
+import wave
 from PIL import Image, ImageDraw, ImageFont
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gen")
@@ -151,6 +155,42 @@ def make_album_art() -> Image.Image:
     return img.resize((64, 64), Image.Resampling.LANCZOS)
 
 
+def write_click_pcm_header(mp3_path: str, out_path: str) -> None:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+        wav_path = tf.name
+    try:
+        subprocess.check_call(["afconvert", "-f", "WAVE", "-d", "LEI16@22050", "-c", "1", mp3_path, wav_path])
+        with wave.open(wav_path, "rb") as w:
+            raw = w.readframes(w.getnframes())
+    finally:
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+
+    samples = list(struct.unpack(f"<{len(raw) // 2}h", raw))
+    peak = max(abs(s) for s in samples) or 1
+    # Trim leading silence right up to 2% of peak, take 768 samples (3 x 256-frame periods = 34.8ms)
+    start = next((i for i, s in enumerate(samples) if abs(s) > peak * 0.02), 0)
+    start = max(0, start - 8)
+    clip = samples[start : start + 768]
+    while len(clip) < 768:
+        clip.append(0)
+    # Normalize to crisp, comfortable iPod click level (~24000 peak)
+    scale = 24000.0 / peak
+    norm = [max(-32767, min(32767, int(round(s * scale)))) for s in clip]
+
+    with open(out_path, "w") as f:
+        f.write("#pragma once\n#include <stdint.h>\n\n")
+        f.write("#define CLICK_PCM_LEN 768\n")
+        f.write("static const int16_t click_pcm[CLICK_PCM_LEN] = {\n")
+        for off in range(0, len(norm), 12):
+            f.write("  " + ",".join(str(v) for v in norm[off : off + 12]) + ",\n")
+        f.write("};\n")
+    print(f"Generated {out_path} ({len(norm)} samples @ 22050 Hz, {len(norm) * 2} bytes)")
+
+
 if __name__ == "__main__":
     write_indexed8_header(make_clickwheel(), os.path.join(OUT_DIR, "clickwheel.h"), "img_clickwheel", transparent_bg=True)
     write_indexed8_header(make_album_art(), os.path.join(OUT_DIR, "album_default.h"), "img_album_default", transparent_bg=False)
+    mp3 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "clickwheel.mp3")
+    if os.path.exists(mp3):
+        write_click_pcm_header(mp3, os.path.join(OUT_DIR, "click_pcm.h"))

@@ -173,11 +173,26 @@ static inline int32_t lv_bar_get_max_fast(lv_obj_t *bar)
     return bar ? *(const int32_t *)((const uint8_t *)bar + 0x2C) : 100;
 }
 
-/* ---------------------------------------------------------------- ROM libc */
+/* ---------------------------------------------------------------- ROM libc & audio */
 #define rom_memcpy FW_FN(0x00000B2A, void *, (void *dst, const void *src, size_t n))
 #define rom_memset FW_FN(0x00000BAA, void *, (void *dst, int c, size_t n))
 #define rom_strcmp FW_FN(0x00000AB2, int, (const char *a, const char *b))
 #define rom_strlen FW_FN(0x00000AA2, size_t, (const char *s))
+#define rom_pcm_mono_to_stereo FW_FN(0x000013EA, void, (int16_t *dst, const int16_t *src, uint32_t n))
+
+/* ---------------------------------------------------------------- CPU0 OS & Audio Devices */
+#define FW_DEV_LIST    ((void *)0x0081D5E4u)
+#define fw_dev_open    FW_FN(0x00DBAA14, void *, (const char *name, int flags, const void *params))
+#define fw_dev_close   FW_FN(0x00DBAA84, int, (void **node))
+#define fw_dev_write   FW_FN(0x00DBAACE, int, (void *node, const void *buf, uint32_t count, const void *arg))
+#define FW_AUDIO_PA_CB 0x00D6BE99u
+
+#define fw_os_sleep    FW_FN(0x00D4E2A4, void, (uint32_t ms))
+#define fw_task_create FW_FN(0x00D4E494, void *, (void (*entry)(void *), void *arg, const char *name, int prio, uint32_t stack))
+#define stock_view_start FW_FN(0x00D97690, void, (void *arg))
+
+/* Reserved Cortex-M vector slot in RAM used as lock-free CPU1 -> CPU0 click trigger */
+#define CLICK_SEQ (*(volatile uint32_t *)0x0080001Cu)
 
 /* ---------------------------------------------------------------- Vendor UI & Music Pages */
 #define FW_VIEW_CTX  (*(uint8_t **)0x0081D008u)

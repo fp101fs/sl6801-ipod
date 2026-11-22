@@ -8,6 +8,7 @@
 #include "fw_240x320.h"
 #include "gen/clickwheel.h"
 #include "gen/album_default.h"
+#include "gen/click_pcm.h"
 
 /* ---------------------------------------------------------------- Geometry */
 #define SCR_W 240
@@ -259,6 +260,7 @@ static void list_step(ipod_ui_t *ui, int dir)
     } else {
         ui->sel_idx = (int8_t)next;
     }
+    CLICK_SEQ++;
     update_list_colors(ui);
 }
 
@@ -324,10 +326,12 @@ static void wheel_event_cb(lv_event_t *e)
                 if (ui->accum_angle >= 1.15f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
+                    CLICK_SEQ++;
                     view_send_msg(4, 5, 2, 4); /* Next */
                 } else if (ui->accum_angle <= -1.15f) {
                     ui->accum_angle = 0.0f;
                     ui->wheel_scrolled = true;
+                    CLICK_SEQ++;
                     view_send_msg(4, 5, 0, 4); /* Prev */
                 }
             }
@@ -750,4 +754,79 @@ __attribute__((used)) int hook_music_album_create(void)
         build_ipod_shell(lv_obj_get_parent(fw_music_album()->hdr), 7, "Albums", false);
     }
     return ret;
+}
+
+/* ---------------------------------------------------------------- CPU0 Click Wheel Sound Task */
+static bool dev_is_busy(const char *name)
+{
+    uint8_t *head = (uint8_t *)FW_DEV_LIST;
+    uint8_t *cur = *(uint8_t **)head;
+    int guard = 0;
+    while (cur && cur != head && guard++ < 64) {
+        uint8_t *node = cur - 0x14;
+        const char *n = *(const char **)node;
+        if (n && rom_strcmp(n, name) == 0) {
+            return (node[0x10] & 1u) != 0;
+        }
+        cur = *(uint8_t **)cur;
+    }
+    return false;
+}
+
+static void click_audio_task(void *arg)
+{
+    (void)arg;
+    int16_t buf[256 * 2] __attribute__((aligned(4)));
+    uint32_t last_seq = CLICK_SEQ;
+    static const uint32_t params[10] = {
+        2, 2, 22050, 256, 4, 0, 0, 0, FW_AUDIO_PA_CB, 0
+    };
+
+    for (;;) {
+        uint32_t seq = CLICK_SEQ;
+        if (seq == last_seq) {
+            fw_os_sleep(8);
+            continue;
+        }
+        last_seq = seq;
+
+        /* Never interrupt active music playback */
+        if (dev_is_busy("/dev/audio0")) {
+            continue;
+        }
+
+        void *dev = fw_dev_open("/dev/audio0", 0, params);
+        if (!dev) continue;
+
+        /* Stream click sample; restart immediately if wheel keeps spinning! */
+        int pos = 0;
+        int idle_periods = 0;
+        while (idle_periods < 6) {
+            if (CLICK_SEQ != last_seq) {
+                last_seq = CLICK_SEQ;
+                pos = 0;
+                idle_periods = 0;
+            }
+            if (pos < CLICK_PCM_LEN) {
+                rom_memcpy(buf, &click_pcm[pos], 256 * sizeof(int16_t));
+                rom_pcm_mono_to_stereo(buf, buf, 256);
+                pos += 256;
+            } else {
+                rom_memset(buf, 0, sizeof(buf));
+                idle_periods++;
+            }
+            fw_dev_write(dev, buf, 256, 0);
+        }
+
+        /* Drain ring and close immediately so music playback always gets /dev/audio0 */
+        fw_os_sleep(55);
+        fw_dev_close(&dev);
+    }
+}
+
+__attribute__((used)) void hook_cpu0_start(void *arg)
+{
+    CLICK_SEQ = 0;
+    fw_task_create(click_audio_task, NULL, "ClickTask", 6, 0x300);
+    stock_view_start(arg);
 }

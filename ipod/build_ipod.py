@@ -32,6 +32,7 @@ HOOKS = [
     ("hook_music_play_create",   0x00D7D57A, 0x00D8BEB0),
     ("hook_music_artist_create", 0x00D7D586, 0x00D8A630),
     ("hook_music_album_create",  0x00D7D58C, 0x00D8A188),
+    ("hook_cpu0_start",          0x00D4ED92, 0x00D97690),
 ]
 
 
