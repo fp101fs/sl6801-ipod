@@ -30,7 +30,6 @@ emcc -O2 \
   -DLV_CONF_INCLUDE_SIMPLE \
   -Wno-unused-function -Wno-unused-parameter -Wno-sign-compare \
   "$WEB_DIR/main.c" \
-  "$REPO_DIR/ipod/ipod_ui.c" \
   $LVGL_SRCS \
   -s EXPORTED_FUNCTIONS='["_main","_web_pointer_event","_web_get_fb","_web_nav_page"]' \
   -s EXPORTED_RUNTIME_METHODS='["HEAPU8"]' \

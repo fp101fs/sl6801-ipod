@@ -4,6 +4,7 @@
  * and generated assets directly to WASM for 1:1 in-browser rendering.
  */
 #pragma once
+#define FW_240X320_WASM_SHIM 1
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -13,6 +14,15 @@
 #include <stdlib.h>
 
 #include "lvgl.h"
+
+/* Exact 12-byte wasm32 layout matching LVGL 8.3 lv_img_dsc_t, allowing packed uint32_t .header */
+typedef struct {
+    uint32_t header;
+    uint32_t data_size;
+    const uint8_t *data;
+} web_lv_img_dsc_t;
+_Static_assert(sizeof(web_lv_img_dsc_t) == sizeof(lv_img_dsc_t), "lv_img_dsc_t size mismatch");
+#define lv_img_dsc_t web_lv_img_dsc_t
 
 /* ---------------------------------------------------------------- Color & Image helpers */
 #define LV_IMG_HEADER(cf, w, h) ((uint32_t)(cf) | ((uint32_t)(w) << 10) | ((uint32_t)(h) << 21))

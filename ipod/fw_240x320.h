@@ -3,6 +3,7 @@
  * Every address below was directly verified by disassembling firmware/sl6801_backup.bin.
  */
 #pragma once
+#ifndef FW_240X320_WASM_SHIM
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -346,3 +347,4 @@ typedef struct {
 #define fw_music_play()   (*(stock_music_play_t **)(FW_VIEW_CTX + 0x98))
 #define fw_music_artist() (*(stock_music_list_t **)(FW_VIEW_CTX + 0xA0))
 #define fw_music_album()  (*(stock_music_list_t **)(FW_VIEW_CTX + 0xA4))
+#endif /* FW_240X320_WASM_SHIM */

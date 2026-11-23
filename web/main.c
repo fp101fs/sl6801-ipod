@@ -5,13 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "fw_240x320.h"
-
-/* Hooked page constructors defined in ipod/ipod_ui.c */
-extern int hook_music_menu_create(void);
-extern int hook_music_song_create(void);
-extern int hook_music_play_create(void);
-extern int hook_music_artist_create(void);
-extern int hook_music_album_create(void);
+#include "../ipod/ipod_ui.c"
 
 volatile uint32_t g_web_click_seq = 0xFFFFFFFEu;
 volatile uint32_t g_web_shot_ctx  = 0u;
