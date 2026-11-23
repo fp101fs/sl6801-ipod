@@ -3,35 +3,57 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>SL6801 iPod Classic — Live LVGL 8.3 WebAssembly Demo</title>
+  <title>SL6801 iPod Classic — Live LVGL 8.3 Demo &amp; Flasher</title>
   <style>
     :root {
       color-scheme: dark;
       --bg: #0b0f17;
-      --card: #131a26;
-      --border: #253044;
+      --card: #121824;
+      --card2: #0e141f;
+      --border: #243045;
       --text: #e6edf5;
       --muted: #8b9bb4;
       --accent: #4a92d4;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 18px;
-      padding: 24px 16px;
-      background: radial-gradient(circle at top, #17243a 0%, var(--bg) 60%);
+      padding: 24px 16px 40px;
+      background: radial-gradient(circle at top, #17243a 0%, var(--bg) 55%);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    header { text-align: center; max-width: 560px; }
-    h1 { margin: 0 0 6px; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; }
-    p.sub { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+    .wrap {
+      max-width: 1040px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    header { text-align: center; }
+    h1 { margin: 0 0 6px; font-size: 1.55rem; font-weight: 700; letter-spacing: -0.02em; }
+    p.sub { margin: 0 auto; max-width: 620px; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
 
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (min-width: 860px) {
+      .grid { grid-template-columns: 380px 1fr; }
+    }
+
+    .sim-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
     .device-frame {
       padding: 14px;
       border-radius: 26px;
@@ -48,83 +70,287 @@
       cursor: pointer;
       touch-action: none;
       background: #000;
-      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);
     }
-    @media (min-width: 520px) {
-      canvas#screen { width: 336px; height: 448px; }
+    @media (min-width: 480px) {
+      canvas#screen { width: 324px; height: 432px; }
     }
 
     .controls {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 8px;
-      max-width: 560px;
+      gap: 7px;
     }
-    button {
+    button, a.btn {
       appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
       border: 1px solid var(--border);
       background: var(--card);
       color: var(--text);
       padding: 7px 12px;
       border-radius: 10px;
-      font-size: 0.84rem;
+      font-size: 0.82rem;
       font-weight: 500;
       cursor: pointer;
       transition: background 0.12s, border-color 0.12s, transform 0.08s;
     }
-    button:hover { background: #1b2436; border-color: #3a4c6b; }
-    button:active { transform: translateY(1px); }
-    button.primary { border-color: var(--accent); background: rgba(74, 146, 212, 0.18); }
-    button.recording { border-color: #e5534b; background: rgba(229, 83, 75, 0.25); color: #ffb3ad; }
+    button:hover, a.btn:hover { background: #1b2436; border-color: #3a4c6b; }
+    button:active, a.btn:active { transform: translateY(1px); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.primary, a.btn.primary { border-color: var(--accent); background: rgba(74, 146, 212, 0.2); }
+    button.recording { border-color: var(--err); background: rgba(248, 81, 73, 0.22); color: #ffb3ad; }
 
-    .hint {
-      font-size: 0.8rem;
-      color: var(--muted);
-      text-align: center;
-      max-width: 480px;
+    #status { font-size: 0.78rem; color: var(--muted); min-height: 1.1em; text-align: center; }
+
+    /* Right column: 3 Methods to Install / Flash */
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+    }
+    .panel h2 { margin: 0 0 6px; font-size: 1.15rem; }
+    .panel .note { margin: 0 0 14px; font-size: 0.83rem; color: var(--muted); line-height: 1.45; }
+
+    .boot-box {
+      background: rgba(74, 146, 212, 0.09);
+      border: 1px solid rgba(74, 146, 212, 0.28);
+      border-radius: 12px;
+      padding: 10px 13px;
+      font-size: 0.82rem;
       line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .boot-box strong { color: #9bc8f7; }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .tab {
+      flex: 1 1 auto;
+      text-align: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab.active {
+      color: var(--text);
+      border-color: var(--accent);
+      background: rgba(74, 146, 212, 0.18);
+    }
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    .code-wrap {
+      position: relative;
+      margin: 10px 0 14px;
+    }
+    pre {
+      margin: 0;
+      padding: 12px 72px 12px 13px;
+      background: #090d14;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: #d2e0f0;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 9px;
+      font-size: 0.74rem;
+      border-radius: 7px;
+    }
+
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: var(--muted);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .badge.ok { border-color: rgba(63,185,80,0.45); color: #7ee787; }
+    .badge.ok .dot { background: var(--ok); }
+    .badge.warn { border-color: rgba(210,153,34,0.45); color: #f2cc60; }
+    .badge.warn .dot { background: var(--warn); }
+
+    #bridgeLog {
+      max-height: 150px;
+      overflow-y: auto;
+      padding-right: 13px;
+      font-size: 0.75rem;
+    }
+    .hint {
+      font-size: 0.79rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-top: 10px;
     }
     .hint a { color: #7bb8f5; text-decoration: none; }
     .hint a:hover { text-decoration: underline; }
-    #status { font-size: 0.78rem; color: var(--muted); min-height: 1.1em; }
+    input[type="file"] { font-size: 0.78rem; color: var(--muted); max-width: 100%; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>SL6801 iPod Classic — Live LVGL 8.3 WASM</h1>
-    <p class="sub">
-      The actual <code>ipod_ui.c</code> firmware UI compiled with Emscripten + LVGL 8.3.
-      Drag circularly on the Click Wheel to scroll, tap center/quadrants, or tap rows directly.
-    </p>
-  </header>
+  <div class="wrap">
+    <header>
+      <h1>SL6801 iPod Classic — Live LVGL 8.3 Demo &amp; Flasher</h1>
+      <p class="sub">
+        The actual <code>ipod_ui.c</code> firmware compiled to WebAssembly with Emscripten + LVGL 8.3.
+        Drag circularly on the Click Wheel to scroll, tap center/quadrants, or tap rows directly.
+      </p>
+    </header>
 
-  <div class="device-frame">
-    <canvas id="screen" width="240" height="320"></canvas>
-  </div>
+    <div class="grid">
+      <!-- LEFT: Live LVGL 8.3 WASM Simulator -->
+      <div class="sim-col">
+        <div class="device-frame">
+          <canvas id="screen" width="240" height="320"></canvas>
+        </div>
 
-  <div class="controls">
-    <button onclick="navPage(2)">Music</button>
-    <button onclick="navPage(3)">Songs</button>
-    <button onclick="navPage(6)">Artists</button>
-    <button onclick="navPage(7)">Albums</button>
-    <button onclick="navPage(4)">Now Playing</button>
-  </div>
+        <div class="controls">
+          <button onclick="navPage(2)">Music</button>
+          <button onclick="navPage(3)">Songs</button>
+          <button onclick="navPage(6)">Artists</button>
+          <button onclick="navPage(7)">Albums</button>
+          <button onclick="navPage(4)">Now Playing</button>
+        </div>
 
-  <div class="controls">
-    <button class="primary" onclick="takeScreenshot()">Screenshot (PNG)</button>
-    <button id="recBtn" onclick="toggleRecord()">Record Video (WebM)</button>
-    <button id="muteBtn" onclick="toggleMute()">Click Sound: On</button>
-  </div>
+        <div class="controls">
+          <button class="primary" onclick="takeScreenshot()">Screenshot (PNG)</button>
+          <button id="recBtn" onclick="toggleRecord()">Record (WebM)</button>
+          <button id="muteBtn" onclick="toggleMute()">Click: On</button>
+        </div>
 
-  <div id="status">Loading WebAssembly…</div>
+        <div id="status">Loading WebAssembly…</div>
+      </div>
 
-  <div class="hint">
-    Runs 100% locally in your browser at 60 FPS (240&times;320 RGB565).
-    Source: <a href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">github.com/fp101fs/sl6801-ipod</a>
+      <!-- RIGHT: 3 Methods to Install / Flash -->
+      <section class="panel">
+        <h2>3 Methods to Install / Flash</h2>
+        <p class="note">
+          SL6801's bootloader (<code>301a:2800</code>) uses USB Mass Storage (class <code>0x08</code>),
+          which browsers block from direct WebUSB. Pick any of the 3 methods below:
+        </p>
+
+        <div class="boot-box">
+          <strong>Enter Bootloader Mode:</strong> Power player completely <b>off</b> &rarr; hold <b>Volume Up</b> &rarr; plug in USB-C.<br />
+          <strong>After Flashing:</strong> Unplug USB &rarr; hold <b>Power 10s</b> (release) &rarr; hold <b>Power 3s</b> to boot.
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" onclick="showTab(0, this)">1. CLI &amp; Download</button>
+          <button class="tab" onclick="showTab(1, this)">2. Web Flasher Bridge</button>
+          <button class="tab" onclick="showTab(2, this)">3. LLM Prompt</button>
+        </div>
+
+        <!-- METHOD 1: CLI & Download -->
+        <div class="pane active" id="pane-0">
+          <div class="row">
+            <a class="btn primary" href="https://github.com/fp101fs/sl6801-ipod/raw/main/firmware/sl6801_ipod.bin" download="sl6801_ipod.bin">
+              Download sl6801_ipod.bin (2 MB)
+            </a>
+            <a class="btn" href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">
+              View Repo on GitHub
+            </a>
+          </div>
+          <div class="code-wrap">
+            <button class="copy-btn" onclick="copyPre('cmd-cli', this)">Copy</button>
+            <pre id="cmd-cli">git clone https://github.com/fp101fs/sl6801-ipod.git
+cd sl6801-ipod
+
+# 1. Back up your stock firmware first
+sudo ./smartlink_flash/smtlink_dump init read_flash 0 2M firmware/my_stock_backup.bin
+
+# 2. Flash iPod Classic firmware (verifies FIRM CRC16)
+sudo ./scripts/flash_ipod.sh</pre>
+          </div>
+          <div class="hint">
+            <b>Windows:</b> Install WinUSB for <code>301A:2800</code> with Zadig, then run
+            <code>smtlink_dump.exe init write_flash 0 0 0 firmware/sl6801_ipod.bin</code>.
+          </div>
+        </div>
+
+        <!-- METHOD 2: Local Web Flasher Bridge -->
+        <div class="pane" id="pane-1">
+          <p class="note" style="margin-bottom:8px;">
+            Start the tiny local Python bridge so this page can back up, flash, and verify your SL6801 directly from your browser:
+          </p>
+          <div class="code-wrap">
+            <button class="copy-btn" onclick="copyPre('cmd-bridge', this)">Copy</button>
+            <pre id="cmd-bridge">sudo python3 scripts/flash_bridge.py</pre>
+          </div>
+
+          <div class="row">
+            <span class="badge" id="bridgeBadge"><span class="dot"></span>Bridge offline</span>
+            <button onclick="checkBridge()">Check Connection</button>
+          </div>
+
+          <div class="row">
+            <button id="btnBackup" onclick="bridgePost('/backup', 'Backing up 2 MB stock flash…')" disabled>1. Backup Stock (2 MB)</button>
+            <button id="btnFlash" class="primary" onclick="flashFromBridge()" disabled>2. Flash iPod Firmware</button>
+            <button id="btnRestore" onclick="bridgePost('/restore', 'Restoring stock firmware…')" disabled>Restore Stock</button>
+          </div>
+
+          <div class="row">
+            <label style="font-size:0.78rem;color:var(--muted);">Optional custom 2 MB .bin:</label>
+            <input type="file" id="customBin" accept=".bin" />
+          </div>
+
+          <pre id="bridgeLog">Waiting for local bridge on http://127.0.0.1:8765…</pre>
+        </div>
+
+        <!-- METHOD 3: Concise LLM Prompt -->
+        <div class="pane" id="pane-2">
+          <p class="note" style="margin-bottom:8px;">
+            Paste this into Claude Code, Antigravity, Cursor, or Codex with your SL6801 attached in bootloader mode:
+          </p>
+          <div class="code-wrap">
+            <button class="copy-btn" onclick="copyPre('cmd-llm', this)">Copy</button>
+            <pre id="cmd-llm">Clone https://github.com/fp101fs/sl6801-ipod. My SL6801 MP3 player is attached via USB in bootloader mode (301a:2800). Verify the USB device, back up its stock 2 MB flash to firmware/my_stock_backup.bin using smartlink_flash/smtlink_dump, then flash firmware/sl6801_ipod.bin via ./scripts/flash_ipod.sh and verify the FIRM CRC16. Tell me the power-on steps when done.</pre>
+          </div>
+          <div class="hint">
+            Tip: On macOS/Linux, <code>smtlink_dump</code> needs <code>sudo</code> to detach the OS mass-storage driver.
+          </div>
+        </div>
+
+        <div class="hint" style="border-top:1px solid var(--border);padding-top:10px;margin-top:14px;">
+          <b>On-device screenshots (microSD <code>0:/shots/</code>):</b>
+          Tap <b>Vol+ &rarr; Vol-</b> quickly for a 240&times;320 BMP screenshot;
+          tap <b>Vol+ &rarr; Vol- &rarr; Vol+</b> to toggle ~4 FPS recording.
+        </div>
+      </section>
+    </div>
   </div>
 
   <script>
+    /* ---------------- LVGL 8.3 WASM Display & Input ---------------- */
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d', { alpha: false });
     const imgData = ctx.createImageData(240, 320);
@@ -171,26 +397,12 @@
     }
 
     let isDown = false;
-    canvas.addEventListener('pointerdown', (e) => {
-      canvas.setPointerCapture(e.pointerId);
-      isDown = true;
-      sendPointer(e, true);
-    });
-    canvas.addEventListener('pointermove', (e) => {
-      if (isDown) sendPointer(e, true);
-    });
-    canvas.addEventListener('pointerup', (e) => {
-      isDown = false;
-      sendPointer(e, false);
-    });
-    canvas.addEventListener('pointercancel', (e) => {
-      isDown = false;
-      sendPointer(e, false);
-    });
+    canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); isDown = true; sendPointer(e, true); });
+    canvas.addEventListener('pointermove', (e) => { if (isDown) sendPointer(e, true); });
+    canvas.addEventListener('pointerup', (e) => { isDown = false; sendPointer(e, false); });
+    canvas.addEventListener('pointercancel', (e) => { isDown = false; sendPointer(e, false); });
 
-    function navPage(id) {
-      if (Module._web_nav_page) Module._web_nav_page(id);
-    }
+    function navPage(id) { if (Module._web_nav_page) Module._web_nav_page(id); }
 
     function takeScreenshot() {
       const a = document.createElement('a');
@@ -205,8 +417,8 @@
       if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
         btn.classList.remove('recording');
-        btn.textContent = 'Record Video (WebM)';
-        statusEl.textContent = 'Saved WebM screen recording.';
+        btn.textContent = 'Record (WebM)';
+        statusEl.textContent = 'Saved WebM recording.';
         return;
       }
       if (!canvas.captureStream || !window.MediaRecorder) {
@@ -214,12 +426,10 @@
         return;
       }
       recChunks = [];
-      const stream = canvas.captureStream(60);
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      mediaRecorder = new MediaRecorder(canvas.captureStream(60), { mimeType: 'video/webm' });
       mediaRecorder.ondataavailable = (ev) => { if (ev.data.size) recChunks.push(ev.data); };
       mediaRecorder.onstop = () => {
-        const blob = new Blob(recChunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(new Blob(recChunks, { type: 'video/webm' }));
         const a = document.createElement('a');
         a.download = `sl6801-ipod-${Date.now()}.webm`;
         a.href = url;
@@ -234,7 +444,73 @@
 
     function toggleMute() {
       muted = !muted;
-      document.getElementById('muteBtn').textContent = muted ? 'Click Sound: Off' : 'Click Sound: On';
+      document.getElementById('muteBtn').textContent = muted ? 'Click: Off' : 'Click: On';
+    }
+
+    /* ---------------- Tabs, Copy, and Local Flash Bridge ---------------- */
+    function showTab(idx, btn) {
+      document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+      document.querySelectorAll('.pane').forEach((p, i) => p.classList.toggle('active', i === idx));
+      if (idx === 1) checkBridge();
+    }
+
+    function copyPre(id, btn) {
+      navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+        const old = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = old; }, 1400);
+      });
+    }
+
+    const BRIDGE = 'http://127.0.0.1:8765';
+    const badgeEl = document.getElementById('bridgeBadge');
+    const logEl = document.getElementById('bridgeLog');
+    const bridgeBtns = ['btnBackup', 'btnFlash', 'btnRestore'].map((id) => document.getElementById(id));
+
+    function setBridgeUI(state, text, enableBtns) {
+      badgeEl.className = 'badge ' + state;
+      badgeEl.innerHTML = `<span class="dot"></span>${text}`;
+      bridgeBtns.forEach((b) => { b.disabled = !enableBtns; });
+    }
+
+    async function checkBridge() {
+      try {
+        const r = await fetch(BRIDGE + '/status', { cache: 'no-store' });
+        const d = await r.json();
+        logEl.textContent = d.log || 'Bridge ready.';
+        if (d.connected) {
+          setBridgeUI('ok', 'SL6801 connected (301a:2800)', true);
+        } else {
+          setBridgeUI('warn', 'Bridge online — plug SL6801 in bootloader mode', true);
+        }
+      } catch (_) {
+        setBridgeUI('', 'Bridge offline', false);
+        logEl.textContent = 'Bridge not running. Start it in Terminal:\n  sudo python3 scripts/flash_bridge.py';
+      }
+    }
+
+    async function bridgePost(path, msg, body) {
+      setBridgeUI('warn', msg, false);
+      logEl.textContent = msg;
+      try {
+        const r = await fetch(BRIDGE + path, { method: 'POST', body: body || null });
+        const d = await r.json();
+        logEl.textContent = (d.ok ? 'SUCCESS!\n' : 'FAILED:\n') + (d.log || '');
+        setBridgeUI(d.ok ? 'ok' : 'warn', d.ok ? 'Done!' : 'Error — see log', true);
+      } catch (e) {
+        logEl.textContent = 'Bridge error: ' + e.message;
+        setBridgeUI('', 'Bridge offline', false);
+      }
+    }
+
+    async function flashFromBridge() {
+      const f = document.getElementById('customBin').files[0];
+      if (f) {
+        const buf = await f.arrayBuffer();
+        await bridgePost('/flash', `Flashing ${f.name}…`, buf);
+      } else {
+        await bridgePost('/flash', 'Flashing firmware/sl6801_ipod.bin…');
+      }
     }
 
     var Module = {
