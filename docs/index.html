@@ -306,7 +306,7 @@
       color: #1f2937;
       padding: 14px 10px;
       border-radius: 13px;
-      font-size: clamp(20px, 2.5vw, 26px);
+      font-size: clamp(15px, 1.9vw, 19.5px);
       font-weight: 700;
       letter-spacing: -0.02em;
       line-height: 1.2;
@@ -605,7 +605,7 @@
     <div class="install-card">
       <div class="prep-grid">
         <div class="prep-item">
-          <span class="prep-icon" aria-hidden="true">🍌</span>
+          <span class="prep-icon" aria-hidden="true">🥾</span>
           <strong>Enter Bootloader Mode (301a:2800)</strong>
           <ul class="prep-list">
             <li>Unplug USB-C</li>
@@ -636,7 +636,7 @@
       <!-- Method A -->
       <div class="pane pane-a active" id="pane-0">
         <ol class="step-ol">
-          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🍌 above)</i>.</li>
+          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🥾 above)</i>.</li>
           <li>
             Clone the repository, back up your stock 2 MB flash, and flash <code>sl6801_ipod.bin</code>:
             <div class="code-wrap">
@@ -662,7 +662,7 @@ sudo ./scripts/flash_ipod.sh</pre>
       <!-- Method B -->
       <div class="pane pane-b" id="pane-1">
         <ol class="step-ol">
-          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🍌 above)</i>.</li>
+          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🥾 above)</i>.</li>
           <li>
             Clone the repo and start the local bridge in Terminal <span style="color:var(--ink-muted);">(browsers block direct WebUSB on Mass Storage <code>0x08</code> bootloaders)</span>:
             <div class="code-wrap">
@@ -694,7 +694,7 @@ sudo ./scripts/flash_ipod.sh</pre>
       <!-- Method C -->
       <div class="pane pane-c" id="pane-2">
         <ol class="step-ol">
-          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🍌 above)</i>.</li>
+          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🥾 above)</i>.</li>
           <li>
             Paste this prompt into Claude Code, Antigravity, Cursor, or Codex:
             <div class="code-wrap">
@@ -876,7 +876,7 @@ sudo ./scripts/flash_ipod.sh</pre>
         if (d.connected) {
           setBridgeUI('ok', 'SL6801 connected (301a:2800)', true);
         } else {
-          setBridgeUI('warn', 'Bridge online — plug SL6801 in 🍌 bootloader mode', true);
+          setBridgeUI('warn', 'Bridge online — plug SL6801 in 🥾 bootloader mode', true);
         }
       } catch (_) {
         setBridgeUI('', 'Bridge offline', false);
