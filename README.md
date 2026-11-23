@@ -126,7 +126,9 @@ Uses `ziglang` to compile Cortex-M4F Thumb-2 code into `firmware/sl6801_ipod.bin
 - Put SL6801 into bootloader mode:
     - Hold VOLUME UP physical button
     - Then plug in USB C with VOLUME UP held
-    - *** The screen will NOT display anything at all during the "go-into-bootloader-mode" process - absolutely nothing - this is normal.
+    - Wait a few seconds
+    - Then release the VOLUME UP button
+    - *** The screen will NOT display anything at all during the entire "go-into-bootloader-mode" process - absolutely nothing - this is normal.
     - Important:  If you see the splash screen ("welcome"), you are NOT in bootloader mode!  
 - Tell your LLM (ex: Claude) to access the SL6801 connected via USB C
 - Tell your LLM to change something / add something, and tell the LLM when it's done to give you the CLI command to flash the modified firmware
