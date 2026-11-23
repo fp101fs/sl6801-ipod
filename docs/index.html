@@ -480,6 +480,15 @@
       font-size: 16px;
       line-height: 1.5;
     }
+    .tile-list {
+      list-style: none;
+      margin: 4px 0 0;
+      padding: 0;
+      font-size: 15.5px;
+      line-height: 1.75;
+    }
+    .tile-dark .tile-list { color: #d2d2d7; }
+    .tile-light .tile-list { color: var(--ink-muted); }
 
     /* ---------------- Footer ---------------- */
     footer {
@@ -675,17 +684,23 @@ sudo ./scripts/flash_ipod.sh</pre>
   <section id="features" class="tiles">
     <div class="tile tile-dark">
       <h3>On-Device Capture.</h3>
-      <p>
-        Tap <b>Vol+ &rarr; Vol-</b> quickly on any screen for a pixel-perfect 240&times;320 BMP saved to microSD
-        <code>0:/shots/</code>. Tap <b>Vol+ &rarr; Vol- &rarr; Vol+</b> to toggle ~4 FPS recording.
-      </p>
+      <p><b>Take a pixel-perfect Screenshot</b></p>
+      <ul class="tile-list">
+        <li>&bull; Tap <b>Vol+ &rarr; Vol-</b> together quickly</li>
+        <li>240&times;320 BMP saved to microSD <code>0:/shots/</code></li>
+        <li style="margin-top:6px;">&bull; Tap <b>Vol+ &rarr; Vol- &rarr; Vol+</b> to toggle ~4 FPS recording</li>
+      </ul>
     </div>
     <div class="tile tile-light">
       <h3>Built for SL6801.</h3>
-      <p>
-        Dual-core Cortex-M4F &middot; 240&times;320 ST7789S LCD &middot; CST726 capacitive touch &middot;
-        FLAC playback &amp; Click Wheel audio &middot; Unbrickable mask ROM bootloader.
-      </p>
+      <ul class="tile-list">
+        <li>Dual-core Cortex-M4F</li>
+        <li>240&times;320 ST7789S LCD</li>
+        <li>CST726 capacitive touch</li>
+        <li>FLAC playback</li>
+        <li>Click Wheel audio</li>
+        <li>Unbrickable mask ROM bootloader.</li>
+      </ul>
     </div>
   </section>
 
