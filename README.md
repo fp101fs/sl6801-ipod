@@ -123,7 +123,7 @@ Uses `ziglang` to compile Cortex-M4F Thumb-2 code into `firmware/sl6801_ipod.bin
 - **Dump Flash**: `sudo ./smartlink_flash/smtlink_dump init read_flash 0 2M firmware/sl6801_backup.bin`
 
 ### The basic vibe-coding flow for SL6801:
-- Put SL6801 into bootloader mode (hold VOL UP (+) physical button, then plug in USB C with VOL UP held)
+- Put SL6801 into bootloader mode (hold VOL UP (+) physical button, then plug in USB C with VOL UP held *** the screen will NOT display anything at all during the "go-into-bootloader-mode" process - absolutely nothing - this is normal.  If you see the splash screen ("welcome"), you are NOT in bootloader mode!)
 - Tell your LLM (ex: Claude) to access the SL6801 connected via USB C
 - Tell your LLM to change something / add something, and tell the LLM when it's done to give you the CLI command to flash the modified firmware
 - Open a new Terminal window and run the command your LLM told you.. a few seconds later (5-10s), the firmware is flashed!
