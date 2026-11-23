@@ -518,8 +518,8 @@
       </svg>
     </a>
     <a href="#top">Live Demo</a>
-    <a href="#install" onclick="selectTabByIndex(0)">CLI Install</a>
-    <a href="#install" onclick="selectTabByIndex(1)">Web Bridge</a>
+    <a href="#install" onclick="selectTabByIndex(0)">Manual CLI</a>
+    <a href="#install" onclick="selectTabByIndex(1)">Web Flash</a>
     <a href="#install" onclick="selectTabByIndex(2)">LLM Prompt</a>
     <a href="#features">Capture &amp; Specs</a>
     <a href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">GitHub</a>
@@ -567,7 +567,7 @@
   <!-- Section 2: Sky-Blue 3 Methods to Install / Flash -->
   <section id="install" class="install-section">
     <h2 class="sec-title">3 Ways to Install.</h2>
-    <p class="sec-sub">Back up your stock 2 MB flash, then flash with CLI, the local Web Bridge, or an LLM prompt.</p>
+    <p class="sec-sub">Back up your stock 2 MB flash, then flash with Manual CLI, Web Flash, or an LLM prompt.</p>
 
     <div class="install-card">
       <div class="prep-grid">
@@ -595,8 +595,8 @@
       </div>
 
       <div class="tabs" role="tablist">
-        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">⬇️ A. CLI &amp; Download</button>
-        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(1)">🔌 B. Web Bridge</button>
+        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">⬇️ A. Manual CLI</button>
+        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(1)">🌐 B. Web Flash</button>
         <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(2)">🤖 C. LLM Prompt</button>
       </div>
 
@@ -631,10 +631,10 @@ sudo ./scripts/flash_ipod.sh</pre>
         <ol class="step-ol">
           <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🥾 above)</i>.</li>
           <li>
-            Start the tiny local bridge in Terminal <span style="color:var(--ink-muted);">(browsers block direct WebUSB on Mass Storage <code>0x08</code> bootloaders)</span>:
+            Clone the repo and start the local bridge in Terminal <span style="color:var(--ink-muted);">(browsers block direct WebUSB on Mass Storage <code>0x08</code> bootloaders)</span>:
             <div class="code-wrap">
               <button class="copy-btn" onclick="copyPre('cmd-bridge', this)">Copy</button>
-              <pre id="cmd-bridge">sudo python3 scripts/flash_bridge.py</pre>
+              <pre id="cmd-bridge">git clone https://github.com/fp101fs/sl6801-ipod.git &amp;&amp; cd sl6801-ipod &amp;&amp; sudo python3 scripts/flash_bridge.py</pre>
             </div>
           </li>
           <li>
