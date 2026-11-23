@@ -3,293 +3,310 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>SL6801 iPod Classic — Interactive Demo &amp; Flasher</title>
+  <title>iPod Classic for SL6801</title>
   <style>
     :root {
-      --bg: #f5f6f8;
-      --surface: #ffffff;
-      --surface-muted: #eef1f5;
-      --border: #dfe4ec;
-      --ink: #111827;
-      --ink-2: #4b5563;
-      --accent: #0066cc;
-      --accent-hover: #0052a3;
-      --ok-bg: #ecfdf3;
-      --ok-ink: #065f46;
-      --ok-dot: #10b981;
-      --warn-bg: #fffbeb;
-      --warn-ink: #92400e;
-      --warn-dot: #f59e0b;
-      --err-bg: #fef2f2;
-      --err-ink: #991b1b;
+      --ink: #1d1d1f;
+      --ink-muted: #424245;
+      --bg-light: #f5f5f7;
+      --bg-white: #ffffff;
+      --bg-dark: #000000;
+      --blue: #0066cc;
+      --blue-hover: #0052a3;
+      --border: #d2d2d7;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
     }
 
-    * { box-sizing: border-box; }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      padding: 36px 20px 56px;
-      background: radial-gradient(ellipse at 50% -10%, #e7f0fb 0%, var(--bg) 52%);
+      font-family: var(--font);
       color: var(--ink);
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-white);
       -webkit-font-smoothing: antialiased;
     }
 
-    .wrap {
-      max-width: 1020px;
-      margin: 0 auto;
+    /* ---------------- Global Apple-style Top Nav ---------------- */
+    nav.topnav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      height: 44px;
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
       display: flex;
-      flex-direction: column;
-      gap: 32px;
-    }
-
-    header {
-      text-align: center;
-      max-width: 600px;
-      margin: 0 auto;
-    }
-    .eyebrow {
-      display: inline-block;
-      margin-bottom: 10px;
-      padding: 4px 11px;
-      border-radius: 999px;
-      background: #e6f0fb;
-      color: #004c99;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-size: clamp(1.6rem, 3vw, 2.05rem);
-      font-weight: 700;
-      letter-spacing: -0.025em;
-      color: var(--ink);
-    }
-    p.sub {
-      margin: 0;
-      color: var(--ink-2);
-      font-size: 0.96rem;
-      line-height: 1.55;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 28px;
-      align-items: start;
-    }
-    @media (min-width: 860px) {
-      .grid { grid-template-columns: 356px 1fr; gap: 36px; }
-    }
-
-    /* Left: Hardware Display */
-    .sim-col {
-      display: flex;
-      flex-direction: column;
       align-items: center;
+      justify-content: center;
+      gap: 28px;
+      padding: 0 16px;
+      overflow-x: auto;
+    }
+    nav.topnav a {
+      color: #1d1d1f;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 400;
+      white-space: nowrap;
+      opacity: 0.85;
+      transition: opacity 0.15s;
+    }
+    nav.topnav a:hover { opacity: 1; }
+    nav.topnav .brand {
+      display: inline-flex;
+      align-items: center;
+      opacity: 1;
+    }
+
+    /* ---------------- Apple Pill Buttons ---------------- */
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
       gap: 14px;
+      margin-top: 20px;
     }
-    .device-frame {
-      padding: 12px;
-      border-radius: 28px;
-      background: linear-gradient(155deg, #f0f3f7 0%, #d2d9e3 100%);
-      border: 1px solid #c5cdd9;
-      box-shadow:
-        0 24px 48px rgba(15, 23, 42, 0.14),
-        0 4px 12px rgba(15, 23, 42, 0.06),
-        inset 0 1px 0 rgba(255, 255, 255, 0.85);
-    }
-    .device-bezel {
-      padding: 4px;
-      border-radius: 18px;
-      background: #14181f;
-    }
-    canvas#screen {
-      display: block;
-      width: 288px;
-      height: 384px;
-      border-radius: 14px;
-      image-rendering: pixelated;
-      cursor: pointer;
-      touch-action: none;
-      background: #000;
-    }
-    @media (min-width: 480px) {
-      canvas#screen { width: 312px; height: 416px; }
-    }
-
-    .seg-nav {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 4px;
-      padding: 4px;
-      background: var(--surface-muted);
-      border-radius: 12px;
-      border: 1px solid var(--border);
-    }
-    .seg-nav button {
-      border: none;
-      background: transparent;
-      color: var(--ink-2);
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.12s, color 0.12s;
-    }
-    .seg-nav button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.7); }
-
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    button.btn, a.btn {
+    .pill {
       appearance: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
       text-decoration: none;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--ink);
-      padding: 8px 14px;
-      border-radius: 10px;
-      font-size: 0.84rem;
-      font-weight: 600;
+      padding: 11px 22px;
+      border-radius: 980px;
+      font-size: 16px;
+      font-weight: 500;
       cursor: pointer;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-      transition: background 0.12s, border-color 0.12s, transform 0.08s, box-shadow 0.12s;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
     }
-    button.btn:hover, a.btn:hover {
-      background: #f9fafb;
-      border-color: #c5cdd9;
-      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
+    .pill:active { transform: scale(0.98); }
+    .pill:disabled { opacity: 0.45; cursor: not-allowed; }
+    .pill-fill {
+      background: var(--blue);
+      color: #ffffff;
+      border: 1px solid var(--blue);
     }
-    button.btn:active, a.btn:active { transform: translateY(1px); }
-    button.btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
-
-    button.btn.primary, a.btn.primary {
-      border-color: var(--accent);
-      background: var(--accent);
+    .pill-fill:hover:not(:disabled) {
+      background: var(--blue-hover);
+      border-color: var(--blue-hover);
+    }
+    .pill-outline {
+      background: transparent;
+      color: var(--blue);
+      border: 1px solid var(--blue);
+    }
+    .pill-outline:hover:not(:disabled) {
+      background: var(--blue);
       color: #ffffff;
     }
-    button.btn.primary:hover, a.btn.primary:hover {
-      background: var(--accent-hover);
-      border-color: var(--accent-hover);
+    .pill-sm {
+      padding: 7px 15px;
+      font-size: 13px;
     }
-    button.btn.recording {
-      border-color: #dc2626;
-      background: var(--err-bg);
-      color: var(--err-ink);
+    .pill-rec {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #dc2626;
     }
 
-    #status {
-      font-size: 0.8rem;
-      color: var(--ink-2);
-      min-height: 1.2em;
+    .sep { height: 12px; background: var(--bg-white); }
+
+    /* ---------------- Section 1: Hero + Live LVGL iPod ---------------- */
+    .hero-section {
+      background: var(--bg-light);
+      padding: 52px 20px 56px;
       text-align: center;
     }
-
-    /* Right: Install / Flash Card */
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 22px;
-      padding: 26px;
-      box-shadow: 0 12px 36px rgba(15, 23, 42, 0.06);
-    }
-    .panel-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .panel h2 {
-      margin: 0;
-      font-size: 1.25rem;
+    .hero-title {
+      font-size: clamp(38px, 6vw, 56px);
       font-weight: 700;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.03em;
+      line-height: 1.06;
+      color: var(--ink);
     }
-    .panel-sub {
-      margin: 0 0 18px;
-      font-size: 0.88rem;
-      color: var(--ink-2);
-      line-height: 1.5;
+    .hero-sub {
+      margin-top: 10px;
+      font-size: clamp(19px, 3vw, 26px);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .ai-grad {
+      margin: 18px auto 28px;
+      font-size: 19px;
+      font-weight: 600;
+      background: linear-gradient(90deg, #0066cc 0%, #8e3fd8 52%, #d94626 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
     }
 
-    /* Compact 2-step hardware prep strip */
-    .steps {
+    .stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .device-frame {
+      padding: 12px;
+      border-radius: 30px;
+      background: linear-gradient(155deg, #f2f5f9 0%, #cfd6e0 100%);
+      border: 1px solid #c2cad6;
+      box-shadow:
+        0 28px 60px rgba(0, 0, 0, 0.14),
+        0 6px 16px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+    .device-bezel {
+      padding: 4px;
+      border-radius: 20px;
+      background: #14171c;
+    }
+    canvas#screen {
+      display: block;
+      width: 288px;
+      height: 384px;
+      border-radius: 16px;
+      image-rendering: pixelated;
+      cursor: pointer;
+      touch-action: none;
+      background: #000;
+    }
+    @media (min-width: 520px) {
+      canvas#screen { width: 312px; height: 416px; }
+    }
+
+    .seg-bar {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 980px;
+      background: #e8e8ed;
+    }
+    .seg-bar button {
+      border: none;
+      background: transparent;
+      color: var(--ink);
+      padding: 7px 14px;
+      border-radius: 980px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .seg-bar button:hover {
+      background: #ffffff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    .status-line {
+      font-size: 13px;
+      color: var(--ink-muted);
+      min-height: 18px;
+    }
+
+    /* ---------------- Section 2: Sky-Blue Install Showcase ---------------- */
+    .install-section {
+      background: linear-gradient(180deg, #d7ebf9 0%, #eef5fb 46%, #f5f5f7 100%);
+      padding: 60px 20px 64px;
+      text-align: center;
+    }
+    .sec-title {
+      font-size: clamp(32px, 5vw, 46px);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+    }
+    .sec-sub {
+      margin: 10px auto 26px;
+      max-width: 560px;
+      font-size: 19px;
+      font-weight: 400;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+
+    .install-card {
+      max-width: 780px;
+      margin: 0 auto;
+      background: var(--bg-white);
+      border-radius: 24px;
+      padding: 28px;
+      text-align: left;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.07);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .prep-grid {
       display: grid;
       grid-template-columns: 1fr;
       gap: 10px;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
-    @media (min-width: 560px) {
-      .steps { grid-template-columns: 1fr 1fr; }
+    @media (min-width: 580px) {
+      .prep-grid { grid-template-columns: 1fr 1fr; }
     }
-    .step-card {
-      padding: 12px 14px;
+    .prep-item {
+      padding: 13px 16px;
       border-radius: 14px;
-      background: #f8fafc;
-      border: 1px solid var(--border);
-      font-size: 0.82rem;
+      background: var(--bg-light);
+      font-size: 13.5px;
       line-height: 1.45;
-      color: var(--ink-2);
+      color: var(--ink-muted);
     }
-    .step-card strong {
+    .prep-item strong {
       display: block;
-      margin-bottom: 2px;
       color: var(--ink);
-      font-size: 0.82rem;
+      margin-bottom: 2px;
     }
 
-    /* Apple-style segmented tabs */
     .tabs {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 4px;
       padding: 4px;
-      border-radius: 13px;
-      background: var(--surface-muted);
-      border: 1px solid var(--border);
-      margin-bottom: 18px;
+      border-radius: 980px;
+      background: #e8e8ed;
+      margin-bottom: 20px;
     }
     .tab {
       border: none;
       background: transparent;
-      color: var(--ink-2);
-      padding: 9px 8px;
-      border-radius: 9px;
-      font-size: 0.82rem;
+      color: var(--ink-muted);
+      padding: 9px 10px;
+      border-radius: 980px;
+      font-size: 13.5px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.14s, color 0.14s, box-shadow 0.14s;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s;
     }
     .tab:hover { color: var(--ink); }
     .tab.active {
-      background: var(--surface);
+      background: #ffffff;
       color: var(--ink);
-      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.09);
     }
 
     .pane { display: none; }
     .pane.active { display: block; }
 
-    .pane-desc {
-      margin: 0 0 12px;
-      font-size: 0.87rem;
-      color: var(--ink-2);
-      line-height: 1.5;
+    .pane-copy {
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--ink-muted);
+      margin-bottom: 14px;
+    }
+    .pane-copy code {
+      background: var(--bg-light);
+      color: var(--ink);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 13px;
     }
 
     .code-wrap {
@@ -297,13 +314,12 @@
       margin: 12px 0 14px;
     }
     pre {
-      margin: 0;
-      padding: 14px 76px 14px 15px;
-      background: #0f172a;
-      color: #f1f5f9;
-      border-radius: 13px;
+      padding: 16px 78px 16px 16px;
+      background: #111418;
+      color: #f5f5f7;
+      border-radius: 14px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.8rem;
+      font-size: 13px;
       line-height: 1.55;
       overflow-x: auto;
       white-space: pre-wrap;
@@ -313,221 +329,290 @@
       position: absolute;
       top: 10px;
       right: 10px;
-      padding: 5px 10px;
-      font-size: 0.75rem;
+      padding: 5px 11px;
+      border-radius: 980px;
+      border: 1px solid #3a3a3c;
+      background: #2c2c2e;
+      color: #ffffff;
+      font-size: 12px;
       font-weight: 600;
-      border-radius: 8px;
-      border: 1px solid #334155;
-      background: #1e293b;
-      color: #f8fafc;
       cursor: pointer;
     }
-    .copy-btn:hover { background: #334155; }
+    .copy-btn:hover { background: #3a3a3c; }
 
-    .row {
+    .btn-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
       align-items: center;
-      margin: 10px 0;
+      gap: 10px;
+      margin: 12px 0;
     }
-
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      padding: 5px 11px;
-      border-radius: 999px;
-      font-size: 0.78rem;
+      padding: 6px 13px;
+      border-radius: 980px;
+      font-size: 13px;
       font-weight: 600;
-      background: var(--surface-muted);
-      color: var(--ink-2);
+      background: var(--bg-light);
+      color: var(--ink-muted);
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
-    .badge.ok { background: var(--ok-bg); color: var(--ok-ink); }
-    .badge.ok .dot { background: var(--ok-dot); }
-    .badge.warn { background: var(--warn-bg); color: var(--warn-ink); }
-    .badge.warn .dot { background: var(--warn-dot); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
+    .badge.ok { background: #e8f8ee; color: #0a5c2b; }
+    .badge.ok .dot { background: #16a34a; }
+    .badge.warn { background: #fef7e0; color: #7c4d03; }
+    .badge.warn .dot { background: #d97706; }
 
-    #bridgeLog {
-      max-height: 140px;
-      overflow-y: auto;
-      padding-right: 15px;
-      font-size: 0.76rem;
-    }
-
+    #bridgeLog { max-height: 140px; overflow-y: auto; padding-right: 16px; font-size: 12.5px; }
     .file-row {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 8px;
-      margin: 12px 0;
-      font-size: 0.82rem;
-      color: var(--ink-2);
+      margin: 10px 0 12px;
+      font-size: 13.5px;
+      color: var(--ink-muted);
     }
-    input[type="file"] { font-size: 0.8rem; color: var(--ink); max-width: 100%; }
+    input[type="file"] { font-size: 13px; color: var(--ink); max-width: 100%; }
 
-    .footnote {
-      margin-top: 18px;
-      padding-top: 14px;
-      border-top: 1px solid var(--border);
-      font-size: 0.81rem;
-      color: var(--ink-2);
-      line-height: 1.55;
+    /* ---------------- Section 3: 2-Column Apple Promo Tiles ---------------- */
+    .tiles {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 0 12px;
+      background: var(--bg-white);
     }
-    .footnote code {
-      background: var(--surface-muted);
+    @media (min-width: 780px) {
+      .tiles { grid-template-columns: 1fr 1fr; }
+    }
+    .tile {
+      padding: 48px 28px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .tile-dark {
+      background: #000000;
+      color: #f5f5f7;
+    }
+    .tile-dark p { color: #d2d2d7; }
+    .tile-dark code {
+      background: #1d1d1f;
+      color: #ffffff;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .tile-light {
+      background: var(--bg-light);
       color: var(--ink);
-      padding: 1px 5px;
-      border-radius: 5px;
-      font-size: 0.78rem;
     }
-    .footnote a { color: var(--accent); font-weight: 600; text-decoration: none; }
-    .footnote a:hover { text-decoration: underline; }
+    .tile-light p { color: var(--ink-muted); }
+    .tile h3 {
+      font-size: clamp(26px, 3.4vw, 34px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .tile p {
+      max-width: 420px;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    /* ---------------- Footer ---------------- */
+    footer {
+      margin-top: 12px;
+      background: var(--bg-light);
+      padding: 28px 20px;
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      line-height: 1.6;
+    }
+    footer a {
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <span class="eyebrow">Smartlink SL6801 &middot; LVGL 8.3 WebAssembly</span>
-      <h1>SL6801 iPod Classic</h1>
-      <p class="sub">
-        Try the real 60 FPS C firmware live in your browser. Drag circularly on the Click Wheel to scroll,
-        tap the quadrants or center button, or jump between screens below.
-      </p>
-    </header>
 
-    <div class="grid">
-      <!-- LEFT: Live LVGL 8.3 WASM Simulator -->
-      <div class="sim-col">
-        <div class="device-frame">
-          <div class="device-bezel">
-            <canvas id="screen" width="240" height="320"></canvas>
-          </div>
+  <!-- Global Apple-style Navbar -->
+  <nav class="topnav" aria-label="Primary">
+    <a class="brand" href="#top" aria-label="SL6801 iPod Classic">
+      <svg height="18" viewBox="0 0 14 44" width="14" fill="currentColor" aria-hidden="true">
+        <path d="m13.0729 17.6825a3.61 3.61 0 0 0 -1.7248 3.0365 3.5132 3.5132 0 0 0 2.1379 3.2223 8.394 8.394 0 0 1 -1.0948 2.2618c-.6816.9812-1.3943 1.9623-2.4787 1.9623s-1.3633-.63-2.613-.63c-1.2187 0-1.6525.6507-2.644.6507s-1.6834-.9089-2.4787-2.0243a9.7842 9.7842 0 0 1 -1.6628-5.2776c0-3.0984 2.014-4.7405 3.9969-4.7405 1.0535 0 1.9314.6919 2.5924.6919.63 0 1.6112-.7333 2.8092-.7333a3.7579 3.7579 0 0 1 3.1604 1.5802zm-3.7284-2.8918a3.5615 3.5615 0 0 0 .8469-2.22 1.5353 1.5353 0 0 0 -.031-.32 3.5686 3.5686 0 0 0 -2.3445 1.2084 3.4629 3.4629 0 0 0 -.8779 2.1585 1.419 1.419 0 0 0 .031.2892 1.19 1.19 0 0 0 .2169.0207 3.0935 3.0935 0 0 0 2.1586-1.1368z"/>
+      </svg>
+    </a>
+    <a href="#top">Live Demo</a>
+    <a href="#install" onclick="selectTabByIndex(0)">CLI Install</a>
+    <a href="#install" onclick="selectTabByIndex(1)">Web Bridge</a>
+    <a href="#install" onclick="selectTabByIndex(2)">LLM Prompt</a>
+    <a href="#features">Capture &amp; Specs</a>
+    <a href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+
+  <!-- Section 1: Hero + Interactive LVGL 8.3 WASM iPod -->
+  <section id="top" class="hero-section">
+    <h1 class="hero-title">iPod Classic</h1>
+    <p class="hero-sub">60 FPS custom firmware for the SL6801 player.</p>
+
+    <div class="cta-row">
+      <a class="pill pill-fill" href="#install">Install Firmware</a>
+      <a class="pill pill-outline" href="https://github.com/fp101fs/sl6801-ipod/raw/main/firmware/sl6801_ipod.bin" download="sl6801_ipod.bin">Download .bin</a>
+    </div>
+
+    <div class="ai-grad">Built with LVGL 8.3. Running live in WebAssembly.</div>
+
+    <div class="stage">
+      <div class="device-frame">
+        <div class="device-bezel">
+          <canvas id="screen" width="240" height="320"></canvas>
         </div>
-
-        <div class="seg-nav" aria-label="Jump to screen">
-          <button onclick="navPage(2)">Music</button>
-          <button onclick="navPage(3)">Songs</button>
-          <button onclick="navPage(6)">Artists</button>
-          <button onclick="navPage(7)">Albums</button>
-          <button onclick="navPage(4)">Now Playing</button>
-        </div>
-
-        <div class="controls">
-          <button class="btn primary" onclick="takeScreenshot()">Screenshot PNG</button>
-          <button class="btn" id="recBtn" onclick="toggleRecord()">Record WebM</button>
-          <button class="btn" id="muteBtn" onclick="toggleMute()">Sound: On</button>
-        </div>
-
-        <div id="status">Loading WebAssembly…</div>
       </div>
 
-      <!-- RIGHT: 3 Methods to Install / Flash -->
-      <section class="panel" aria-label="Install and flash firmware">
-        <div class="panel-head">
-          <h2>Install on Your SL6801</h2>
-          <a class="btn" href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">GitHub Repo</a>
+      <div class="seg-bar" aria-label="Jump to screen">
+        <button onclick="navPage(2)">Music</button>
+        <button onclick="navPage(3)">Songs</button>
+        <button onclick="navPage(6)">Artists</button>
+        <button onclick="navPage(7)">Albums</button>
+        <button onclick="navPage(4)">Now Playing</button>
+      </div>
+
+      <div class="cta-row" style="margin-top:0;">
+        <button class="pill pill-fill pill-sm" onclick="takeScreenshot()">Screenshot PNG</button>
+        <button class="pill pill-outline pill-sm" id="recBtn" onclick="toggleRecord()">Record WebM</button>
+        <button class="pill pill-outline pill-sm" id="muteBtn" onclick="toggleMute()">Sound: On</button>
+      </div>
+
+      <div class="status-line" id="status">Loading WebAssembly…</div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- Section 2: Sky-Blue 3 Methods to Install / Flash -->
+  <section id="install" class="install-section">
+    <h2 class="sec-title">3 Ways to Install.</h2>
+    <p class="sec-sub">Back up your stock 2 MB flash, then flash with CLI, the local Web Bridge, or an LLM prompt.</p>
+
+    <div class="install-card">
+      <div class="prep-grid">
+        <div class="prep-item">
+          <strong>1. Enter Bootloader (301a:2800)</strong>
+          Power off completely, hold <b>Volume Up</b>, and plug in USB-C.
         </div>
-        <p class="panel-sub">
-          Choose whichever of the 3 install methods fits your workflow. Always back up your stock 2 MB flash first.
+        <div class="prep-item">
+          <strong>2. Reboot After Flashing</strong>
+          Unplug USB, hold <b>Power 10s</b>, release, then hold <b>Power 3s</b>.
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">1. CLI &amp; Download</button>
+        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(1)">2. Web Bridge</button>
+        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(2)">3. LLM Prompt</button>
+      </div>
+
+      <!-- Method 1 -->
+      <div class="pane active" id="pane-0">
+        <p class="pane-copy">
+          Clone the repository and run the verified flash script on macOS or Linux, or download <code>sl6801_ipod.bin</code> directly.
         </p>
-
-        <div class="steps">
-          <div class="step-card">
-            <strong>Before Flashing (Bootloader)</strong>
-            Power player off, hold <b>Volume Up</b>, then plug in USB-C.
-          </div>
-          <div class="step-card">
-            <strong>After Flashing (Reboot)</strong>
-            Unplug USB, hold <b>Power 10s</b>, release, then hold <b>Power 3s</b>.
-          </div>
-        </div>
-
-        <div class="tabs" role="tablist">
-          <button class="tab active" role="tab" aria-selected="true" onclick="showTab(0, this)">1. CLI &amp; Download</button>
-          <button class="tab" role="tab" aria-selected="false" onclick="showTab(1, this)">2. Web Bridge</button>
-          <button class="tab" role="tab" aria-selected="false" onclick="showTab(2, this)">3. LLM Prompt</button>
-        </div>
-
-        <!-- METHOD 1: CLI & Download -->
-        <div class="pane active" id="pane-0">
-          <p class="pane-desc">
-            Clone the repo and run the verified flash script (macOS &amp; Linux), or download the 2 MB firmware image directly.
-          </p>
-          <div class="row">
-            <a class="btn primary" href="https://github.com/fp101fs/sl6801-ipod/raw/main/firmware/sl6801_ipod.bin" download="sl6801_ipod.bin">
-              Download sl6801_ipod.bin (2 MB)
-            </a>
-          </div>
-          <div class="code-wrap">
-            <button class="copy-btn" onclick="copyPre('cmd-cli', this)">Copy</button>
-            <pre id="cmd-cli">git clone https://github.com/fp101fs/sl6801-ipod.git
+        <div class="code-wrap">
+          <button class="copy-btn" onclick="copyPre('cmd-cli', this)">Copy</button>
+          <pre id="cmd-cli">git clone https://github.com/fp101fs/sl6801-ipod.git
 cd sl6801-ipod
 
-# 1. Back up your stock firmware
+# Back up stock 2 MB flash first
 sudo ./smartlink_flash/smtlink_dump init read_flash 0 2M firmware/my_stock_backup.bin
 
-# 2. Flash iPod Classic firmware &amp; verify CRC16
+# Flash iPod Classic firmware &amp; verify FIRM CRC16
 sudo ./scripts/flash_ipod.sh</pre>
-          </div>
-          <p class="pane-desc" style="font-size:0.81rem;margin-bottom:0;">
-            <b>Windows:</b> Install WinUSB for <code>301A:2800</code> via Zadig, then run
-            <code>smtlink_dump.exe init write_flash 0 0 0 firmware/sl6801_ipod.bin</code>.
-          </p>
+        </div>
+        <p class="pane-copy" style="font-size:13.5px;margin-bottom:0;">
+          <b>Windows:</b> Install WinUSB for <code>301A:2800</code> with Zadig, then run
+          <code>smtlink_dump.exe init write_flash 0 0 0 firmware/sl6801_ipod.bin</code>.
+        </p>
+      </div>
+
+      <!-- Method 2 -->
+      <div class="pane" id="pane-1">
+        <p class="pane-copy">
+          Browsers block direct WebUSB on Mass Storage (<code>0x08</code>) bootloaders. Run this tiny local bridge to back up and flash right from this page:
+        </p>
+        <div class="code-wrap">
+          <button class="copy-btn" onclick="copyPre('cmd-bridge', this)">Copy</button>
+          <pre id="cmd-bridge">sudo python3 scripts/flash_bridge.py</pre>
         </div>
 
-        <!-- METHOD 2: Local Web Flasher Bridge -->
-        <div class="pane" id="pane-1">
-          <p class="pane-desc">
-            Browsers block direct WebUSB on Mass Storage (<code>0x08</code>) bootloaders. Start this tiny local bridge to back up and flash right from this page:
-          </p>
-          <div class="code-wrap">
-            <button class="copy-btn" onclick="copyPre('cmd-bridge', this)">Copy</button>
-            <pre id="cmd-bridge">sudo python3 scripts/flash_bridge.py</pre>
-          </div>
-
-          <div class="row">
-            <span class="badge" id="bridgeBadge"><span class="dot"></span>Bridge offline</span>
-            <button class="btn" onclick="checkBridge()">Check Connection</button>
-          </div>
-
-          <div class="row">
-            <button class="btn" id="btnBackup" onclick="bridgePost('/backup', 'Backing up 2 MB stock flash…')" disabled>1. Backup Stock</button>
-            <button class="btn primary" id="btnFlash" onclick="flashFromBridge()" disabled>2. Flash iPod Firmware</button>
-            <button class="btn" id="btnRestore" onclick="bridgePost('/restore', 'Restoring stock firmware…')" disabled>Restore Stock</button>
-          </div>
-
-          <div class="file-row">
-            <label for="customBin">Optional custom 2 MB <code>.bin</code>:</label>
-            <input type="file" id="customBin" accept=".bin" />
-          </div>
-
-          <pre id="bridgeLog">Waiting for local bridge on http://127.0.0.1:8765…</pre>
+        <div class="btn-row">
+          <span class="badge" id="bridgeBadge"><span class="dot"></span>Bridge offline</span>
+          <button class="pill pill-outline pill-sm" onclick="checkBridge()">Check Connection</button>
         </div>
 
-        <!-- METHOD 3: Concise LLM Prompt -->
-        <div class="pane" id="pane-2">
-          <p class="pane-desc">
-            Paste into Claude Code, Antigravity, Cursor, or Codex with your SL6801 plugged in via USB in bootloader mode:
-          </p>
-          <div class="code-wrap">
-            <button class="copy-btn" onclick="copyPre('cmd-llm', this)">Copy</button>
-            <pre id="cmd-llm">Clone https://github.com/fp101fs/sl6801-ipod. My SL6801 MP3 player is attached via USB in bootloader mode (301a:2800). Verify the USB device, back up its stock 2 MB flash to firmware/my_stock_backup.bin using smartlink_flash/smtlink_dump, then flash firmware/sl6801_ipod.bin via ./scripts/flash_ipod.sh and verify the FIRM CRC16. Tell me the power-on steps when done.</pre>
-          </div>
-          <p class="pane-desc" style="font-size:0.81rem;margin-bottom:0;">
-            Note: On macOS &amp; Linux, <code>smtlink_dump</code> requires <code>sudo</code> to detach the OS mass-storage driver.
-          </p>
+        <div class="btn-row">
+          <button class="pill pill-outline pill-sm" id="btnBackup" onclick="bridgePost('/backup', 'Backing up 2 MB stock flash…')" disabled>Backup Stock</button>
+          <button class="pill pill-fill pill-sm" id="btnFlash" onclick="flashFromBridge()" disabled>Flash iPod Firmware</button>
+          <button class="pill pill-outline pill-sm" id="btnRestore" onclick="bridgePost('/restore', 'Restoring stock firmware…')" disabled>Restore Stock</button>
         </div>
 
-        <div class="footnote">
-          <b>On-device screenshots (microSD <code>0:/shots/</code>):</b>
-          Tap <b>Vol+ &rarr; Vol-</b> quickly for a 240&times;320 BMP screenshot;
-          tap <b>Vol+ &rarr; Vol- &rarr; Vol+</b> to toggle ~4 FPS recording.
+        <div class="file-row">
+          <label for="customBin">Optional custom 2 MB <code>.bin</code>:</label>
+          <input type="file" id="customBin" accept=".bin" />
         </div>
-      </section>
+
+        <pre id="bridgeLog">Waiting for local bridge on http://127.0.0.1:8765…</pre>
+      </div>
+
+      <!-- Method 3 -->
+      <div class="pane" id="pane-2">
+        <p class="pane-copy">
+          Paste this concise prompt into Claude Code, Antigravity, Cursor, or Codex while your SL6801 is attached in bootloader mode:
+        </p>
+        <div class="code-wrap">
+          <button class="copy-btn" onclick="copyPre('cmd-llm', this)">Copy</button>
+          <pre id="cmd-llm">Clone https://github.com/fp101fs/sl6801-ipod. My SL6801 MP3 player is attached via USB in bootloader mode (301a:2800). Verify the USB device, back up its stock 2 MB flash to firmware/my_stock_backup.bin using smartlink_flash/smtlink_dump, then flash firmware/sl6801_ipod.bin via ./scripts/flash_ipod.sh and verify the FIRM CRC16. Tell me the power-on steps when done.</pre>
+        </div>
+        <p class="pane-copy" style="font-size:13.5px;margin-bottom:0;">
+          Note: On macOS &amp; Linux, <code>smtlink_dump</code> needs <code>sudo</code> to detach the OS mass-storage driver.
+        </p>
+      </div>
     </div>
-  </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- Section 3: Apple-style 2-Column Feature Tiles -->
+  <section id="features" class="tiles">
+    <div class="tile tile-dark">
+      <h3>On-Device Capture.</h3>
+      <p>
+        Tap <b>Vol+ &rarr; Vol-</b> quickly on any screen for a pixel-perfect 240&times;320 BMP saved to microSD
+        <code>0:/shots/</code>. Tap <b>Vol+ &rarr; Vol- &rarr; Vol+</b> to toggle ~4 FPS recording.
+      </p>
+    </div>
+    <div class="tile tile-light">
+      <h3>Built for SL6801.</h3>
+      <p>
+        Dual-core Cortex-M4F &middot; 240&times;320 ST7789S LCD &middot; CST726 capacitive touch &middot;
+        FLAC playback &amp; Click Wheel audio &middot; Unbrickable mask ROM bootloader.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    SL6801 iPod Classic Firmware &middot; Open Source on
+    <a href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">GitHub</a>
+    &middot; Built with LVGL 8.3, Zig, and Emscripten.
+  </footer>
 
   <script>
     const canvas = document.getElementById('screen');
@@ -595,7 +680,7 @@ sudo ./scripts/flash_ipod.sh</pre>
       const btn = document.getElementById('recBtn');
       if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
-        btn.classList.remove('recording');
+        btn.className = 'pill pill-outline pill-sm';
         btn.textContent = 'Record WebM';
         statusEl.textContent = 'Saved WebM recording.';
         return;
@@ -616,7 +701,7 @@ sudo ./scripts/flash_ipod.sh</pre>
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       };
       mediaRecorder.start();
-      btn.classList.add('recording');
+      btn.className = 'pill pill-rec pill-sm';
       btn.textContent = 'Stop Recording';
       statusEl.textContent = 'Recording 60 FPS WebM…';
     }
@@ -626,7 +711,7 @@ sudo ./scripts/flash_ipod.sh</pre>
       document.getElementById('muteBtn').textContent = muted ? 'Sound: Off' : 'Sound: On';
     }
 
-    function showTab(idx, btn) {
+    function selectTabByIndex(idx) {
       document.querySelectorAll('.tab').forEach((t, i) => {
         t.classList.toggle('active', i === idx);
         t.setAttribute('aria-selected', i === idx ? 'true' : 'false');
