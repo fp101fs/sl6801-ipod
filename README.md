@@ -8,7 +8,7 @@ Includes reverse-engineering notes, flash tools, and touch fixes.
 
 ## What It Does
 
-- **60 FPS UI**: <mark>Replaces all 5 music screens</mark> with a Blue iPod Classic shell.
+- **60 FPS UI**: <mark>Replaces all 5 music screens</mark> with an iPod shell.
 - **Click Wheel**: Smooth polar touch scrolling with press glows and click audio.
 - **Fluid Animations**: Smooth `180 ms` slide transitions and `115 ms` highlight glides.
 - **Now Playing**: 3D-tilted album art, glass sheen, and glossy Aqua progress bar.
