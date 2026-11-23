@@ -135,4 +135,4 @@ Uses `ziglang` to compile Cortex-M4F Thumb-2 code into `firmware/sl6801_ipod.bin
 - Open a new Terminal window and run the command your LLM told you.. a few seconds later (5-10s), the firmware is flashed!
 - Unplug USB C cable
 - Hold down the power button for 10 seconds (the screen will NOT turn on at this time - this is to take SL6801 out of bootloader mode) and release it fully.
-- Then hold down the power button AGAIN for 3 seconds (SL6801 should power up almost instantly when you do this.. you can release power button when you see the welcome/splash screen.
+- Then hold down the power button AGAIN for 3 seconds (SL6801 should power up almost instantly when you do this.. you can release power button when you see the welcome/splash screen.)
