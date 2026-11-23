@@ -663,7 +663,7 @@ sudo ./scripts/flash_ipod.sh</pre>
         <ol class="step-ol">
           <li>Put SL6801 into <b>Bootloader mode</b> <i>(see 🥾 above)</i>.</li>
           <li>
-            Paste this concise prompt into Claude Code, Antigravity, Cursor, or Codex:
+            Paste this prompt into Claude Code, Antigravity, Cursor, or Codex:
             <div class="code-wrap">
               <button class="copy-btn" onclick="copyPre('cmd-llm', this)">Copy</button>
               <pre id="cmd-llm">Clone https://github.com/fp101fs/sl6801-ipod. My SL6801 MP3 player is attached via USB in bootloader mode (301a:2800). Verify the USB device, back up its stock 2 MB flash to firmware/my_stock_backup.bin using smartlink_flash/smtlink_dump, then flash firmware/sl6801_ipod.bin via ./scripts/flash_ipod.sh and verify the FIRM CRC16. Tell me the power-on steps when done.</pre>
