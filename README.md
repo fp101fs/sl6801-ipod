@@ -4,9 +4,15 @@ Custom **60 FPS iPod *SL*** firmware for the *Smartlink SL6801* player.
 
 **[Try the Live Interactive WebAssembly Demo & Flasher →](https://fp101fs.github.io/sl6801-ipod/)**
 
-| iPod *SL* Demo (Actual) | Main Menu (Actual) | Now Playing (Actual) |
-| :---: | :---: | :---: |
-| <!-- Drop assets/screenshots/demo.mp4 here in GitHub editor --> [Watch demo.mp4](assets/screenshots/demo.mp4) | ![Main Menu](assets/screenshots/music_menu.png) | ![Now Playing](assets/screenshots/now_playing.png) |
+### iPod *SL* Demo (Actual)
+
+https://github.com/user-attachments/assets/bd0a3d29-6547-45a0-a65a-7719ba6d9e52
+
+### Screenshots
+
+| Main Menu (Actual) | Now Playing (Actual) |
+| :---: | :---: |
+| ![Main Menu](assets/screenshots/music_menu.png) | ![Now Playing](assets/screenshots/now_playing.png) |
 
 *Captured directly on real SL6801 hardware (`240×320`) via the built-in microSD screenshot/recorder hook.*
 
