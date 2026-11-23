@@ -252,18 +252,24 @@
       .prep-grid { grid-template-columns: 1fr 1fr; }
     }
     .prep-item {
-      padding: 13px 16px;
-      border-radius: 14px;
+      padding: 15px 18px;
+      border-radius: 16px;
       background: var(--bg-light);
       font-size: 13.5px;
-      line-height: 1.45;
+      line-height: 1.5;
       color: var(--ink-muted);
     }
     .prep-item strong {
       display: block;
       color: var(--ink);
-      margin-bottom: 2px;
+      margin-bottom: 6px;
+      font-size: 14px;
     }
+    .prep-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .prep-list li { margin: 3px 0; }
 
     .tabs {
       display: grid;
@@ -272,7 +278,7 @@
       padding: 4px;
       border-radius: 980px;
       background: #e8e8ed;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     .tab {
       border: none;
@@ -292,8 +298,44 @@
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.09);
     }
 
-    .pane { display: none; }
+    .pane {
+      display: none;
+      padding: 20px 22px;
+      border-radius: 18px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
     .pane.active { display: block; }
+    .pane-a { background: #eef6ff; }
+    .pane-b { background: #eefbf3; }
+    .pane-c { background: #f5f1ff; }
+
+    .step-ol {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--ink);
+      font-size: 14.5px;
+      line-height: 1.55;
+    }
+    .step-ol > li {
+      margin-bottom: 12px;
+    }
+    .step-ol > li:last-child {
+      margin-bottom: 0;
+    }
+    .step-ol code {
+      background: rgba(255, 255, 255, 0.75);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      color: var(--ink);
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .step-note {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--ink-muted);
+      line-height: 1.5;
+    }
 
     .pane-copy {
       font-size: 15px;
@@ -506,29 +548,38 @@
     <div class="install-card">
       <div class="prep-grid">
         <div class="prep-item">
-          <strong>1. Enter Bootloader (301a:2800)</strong>
-          Power off completely, hold <b>Volume Up</b>, and plug in USB-C.
+          <strong>Enter Bootloader Mode (301a:2800)</strong>
+          <ul class="prep-list">
+            <li>Power off completely (unplug USB-C)</li>
+            <li>Hold <b>Volume Up (+)</b></li>
+            <li>Plug in USB-C</li>
+          </ul>
         </div>
         <div class="prep-item">
-          <strong>2. Reboot After Flashing</strong>
-          Unplug USB, hold <b>Power 10s</b>, release, then hold <b>Power 3s</b>.
+          <strong>Reboot After Flashing</strong>
+          <ul class="prep-list">
+            <li>Unplug USB-C</li>
+            <li>Hold <b>Power for 10s</b>, then release</li>
+            <li>Hold <b>Power for 3s</b> to boot</li>
+          </ul>
         </div>
       </div>
 
       <div class="tabs" role="tablist">
-        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">1. CLI &amp; Download</button>
-        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(1)">2. Web Bridge</button>
-        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(2)">3. LLM Prompt</button>
+        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">💻 A. CLI &amp; Download</button>
+        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(1)">🔌 B. Web Bridge</button>
+        <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(2)">🤖 C. LLM Prompt</button>
       </div>
 
-      <!-- Method 1 -->
-      <div class="pane active" id="pane-0">
-        <p class="pane-copy">
-          Clone the repository and run the verified flash script on macOS or Linux, or download <code>sl6801_ipod.bin</code> directly.
-        </p>
-        <div class="code-wrap">
-          <button class="copy-btn" onclick="copyPre('cmd-cli', this)">Copy</button>
-          <pre id="cmd-cli">git clone https://github.com/fp101fs/sl6801-ipod.git
+      <!-- Method A -->
+      <div class="pane pane-a active" id="pane-0">
+        <ol class="step-ol">
+          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see above)</i>.</li>
+          <li>
+            Clone the repository, back up your stock 2 MB flash, and flash <code>sl6801_ipod.bin</code>:
+            <div class="code-wrap">
+              <button class="copy-btn" onclick="copyPre('cmd-cli', this)">Copy</button>
+              <pre id="cmd-cli">git clone https://github.com/fp101fs/sl6801-ipod.git
 cd sl6801-ipod
 
 # Back up stock 2 MB flash first
@@ -536,54 +587,64 @@ sudo ./smartlink_flash/smtlink_dump init read_flash 0 2M firmware/my_stock_backu
 
 # Flash iPod Classic firmware &amp; verify FIRM CRC16
 sudo ./scripts/flash_ipod.sh</pre>
-        </div>
-        <p class="pane-copy" style="font-size:13.5px;margin-bottom:0;">
-          <b>Windows:</b> Install WinUSB for <code>301A:2800</code> with Zadig, then run
-          <code>smtlink_dump.exe init write_flash 0 0 0 firmware/sl6801_ipod.bin</code>.
-        </p>
+            </div>
+            <div class="step-note">
+              <b>Windows:</b> Install WinUSB for <code>301A:2800</code> with Zadig, then run
+              <code>smtlink_dump.exe init write_flash 0 0 0 firmware/sl6801_ipod.bin</code>.
+            </div>
+          </li>
+          <li><b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
+        </ol>
       </div>
 
-      <!-- Method 2 -->
-      <div class="pane" id="pane-1">
-        <p class="pane-copy">
-          Browsers block direct WebUSB on Mass Storage (<code>0x08</code>) bootloaders. Run this tiny local bridge to back up and flash right from this page:
-        </p>
-        <div class="code-wrap">
-          <button class="copy-btn" onclick="copyPre('cmd-bridge', this)">Copy</button>
-          <pre id="cmd-bridge">sudo python3 scripts/flash_bridge.py</pre>
-        </div>
-
-        <div class="btn-row">
-          <span class="badge" id="bridgeBadge"><span class="dot"></span>Bridge offline</span>
-          <button class="pill pill-outline pill-sm" onclick="checkBridge()">Check Connection</button>
-        </div>
-
-        <div class="btn-row">
-          <button class="pill pill-outline pill-sm" id="btnBackup" onclick="bridgePost('/backup', 'Backing up 2 MB stock flash…')" disabled>Backup Stock</button>
-          <button class="pill pill-fill pill-sm" id="btnFlash" onclick="flashFromBridge()" disabled>Flash iPod Firmware</button>
-          <button class="pill pill-outline pill-sm" id="btnRestore" onclick="bridgePost('/restore', 'Restoring stock firmware…')" disabled>Restore Stock</button>
-        </div>
-
-        <div class="file-row">
-          <label for="customBin">Optional custom 2 MB <code>.bin</code>:</label>
-          <input type="file" id="customBin" accept=".bin" />
-        </div>
-
-        <pre id="bridgeLog">Waiting for local bridge on http://127.0.0.1:8765…</pre>
+      <!-- Method B -->
+      <div class="pane pane-b" id="pane-1">
+        <ol class="step-ol">
+          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see above)</i>.</li>
+          <li>
+            Start the tiny local bridge in Terminal <span style="color:var(--ink-muted);">(browsers block direct WebUSB on Mass Storage <code>0x08</code> bootloaders)</span>:
+            <div class="code-wrap">
+              <button class="copy-btn" onclick="copyPre('cmd-bridge', this)">Copy</button>
+              <pre id="cmd-bridge">sudo python3 scripts/flash_bridge.py</pre>
+            </div>
+          </li>
+          <li>
+            Connect, back up your stock flash, and flash directly from this page:
+            <div class="btn-row">
+              <span class="badge" id="bridgeBadge"><span class="dot"></span>Bridge offline</span>
+              <button class="pill pill-outline pill-sm" onclick="checkBridge()">Check Connection</button>
+            </div>
+            <div class="btn-row">
+              <button class="pill pill-outline pill-sm" id="btnBackup" onclick="bridgePost('/backup', 'Backing up 2 MB stock flash…')" disabled>Backup Stock</button>
+              <button class="pill pill-fill pill-sm" id="btnFlash" onclick="flashFromBridge()" disabled>Flash iPod Firmware</button>
+              <button class="pill pill-outline pill-sm" id="btnRestore" onclick="bridgePost('/restore', 'Restoring stock firmware…')" disabled>Restore Stock</button>
+            </div>
+            <div class="file-row">
+              <label for="customBin">Optional custom 2 MB <code>.bin</code>:</label>
+              <input type="file" id="customBin" accept=".bin" />
+            </div>
+            <pre id="bridgeLog">Waiting for local bridge on http://127.0.0.1:8765…</pre>
+          </li>
+          <li><b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
+        </ol>
       </div>
 
-      <!-- Method 3 -->
-      <div class="pane" id="pane-2">
-        <p class="pane-copy">
-          Paste this concise prompt into Claude Code, Antigravity, Cursor, or Codex while your SL6801 is attached in bootloader mode:
-        </p>
-        <div class="code-wrap">
-          <button class="copy-btn" onclick="copyPre('cmd-llm', this)">Copy</button>
-          <pre id="cmd-llm">Clone https://github.com/fp101fs/sl6801-ipod. My SL6801 MP3 player is attached via USB in bootloader mode (301a:2800). Verify the USB device, back up its stock 2 MB flash to firmware/my_stock_backup.bin using smartlink_flash/smtlink_dump, then flash firmware/sl6801_ipod.bin via ./scripts/flash_ipod.sh and verify the FIRM CRC16. Tell me the power-on steps when done.</pre>
-        </div>
-        <p class="pane-copy" style="font-size:13.5px;margin-bottom:0;">
-          Note: On macOS &amp; Linux, <code>smtlink_dump</code> needs <code>sudo</code> to detach the OS mass-storage driver.
-        </p>
+      <!-- Method C -->
+      <div class="pane pane-c" id="pane-2">
+        <ol class="step-ol">
+          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see above)</i>.</li>
+          <li>
+            Paste this concise prompt into Claude Code, Antigravity, Cursor, or Codex:
+            <div class="code-wrap">
+              <button class="copy-btn" onclick="copyPre('cmd-llm', this)">Copy</button>
+              <pre id="cmd-llm">Clone https://github.com/fp101fs/sl6801-ipod. My SL6801 MP3 player is attached via USB in bootloader mode (301a:2800). Verify the USB device, back up its stock 2 MB flash to firmware/my_stock_backup.bin using smartlink_flash/smtlink_dump, then flash firmware/sl6801_ipod.bin via ./scripts/flash_ipod.sh and verify the FIRM CRC16. Tell me the power-on steps when done.</pre>
+            </div>
+            <div class="step-note">
+              Note: On macOS &amp; Linux, <code>smtlink_dump</code> needs <code>sudo</code> to detach the OS mass-storage driver.
+            </div>
+          </li>
+          <li><b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
+        </ol>
       </div>
     </div>
   </section>
