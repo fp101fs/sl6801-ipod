@@ -121,3 +121,12 @@ Uses `ziglang` to compile Cortex-M4F Thumb-2 code into `firmware/sl6801_ipod.bin
 - **Rebuild**: `.venv/bin/python ipod/build_ipod.py`
 - **Inspect Flash**: `python3 reference/SL6801_player/tools/slfw.py firmware/sl6801_backup.bin info`
 - **Dump Flash**: `sudo ./smartlink_flash/smtlink_dump init read_flash 0 2M firmware/sl6801_backup.bin`
+
+### The basic vibe-coding flow for SL6801:
+- Put SL6801 into bootloader mode (hold VOL UP (+) physical button, then plug in USB C with VOL UP held down)
+- Tell your LLM (ex: Claude) to access the SL6801 connected via USB C
+- Tell your LLM to change something / add something, and tell the LLM when it's done to give you the CLI command to flash the modified firmware
+- Open a new Terminal window and run the command your LLM told you.. a few seconds later (5-10s), the firmware is flashed!
+- Unplug USB C cable
+- Hold down the power button for 10 seconds (the screen will NOT turn on at this time - this is to take SL6801 out of bootloader mode) and release it fully.
+- Then hold down the power button AGAIN for 3 seconds (SL6801 should power up almost instantly when you do this.. you can release power button when you see the welcome/splash screen.
