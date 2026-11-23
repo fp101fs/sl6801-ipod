@@ -1,4 +1,4 @@
-# SL6801 iPod (`v2.2`)
+# iPod SL (`v2.2`) for SL6801 MP3 Player
 
 Custom **60 FPS iPod *SL*** firmware for the *Smartlink SL6801* player.
 
