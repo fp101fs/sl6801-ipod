@@ -141,8 +141,20 @@ typedef struct {
 #define lv_mem_free    FW_FN(0x00DAF464, void, (void *p))
 #define lv_mem_monitor FW_FN(0x00DAF480, void, (lv_mem_monitor_t *mon))
 
-#define lv_disp_get_scr_act FW_FN(0x00D9E0A8, lv_obj_t *, (void *disp))
-#define lv_indev_get_act    FW_FN(0x00D9EAB0, void *, (void))
+#define lv_disp_get_scr_act   FW_FN(0x00D9E0A8, lv_obj_t *, (void *disp))
+#define lv_disp_get_layer_top FW_FN(0x00D9E110, lv_obj_t *, (void *disp))
+#define lv_indev_get_act      FW_FN(0x00D9EAB0, void *, (void))
+
+typedef struct {
+    lv_coord_t x1;
+    lv_coord_t y1;
+    lv_coord_t x2;
+    lv_coord_t y2;
+} lv_area_t;
+
+#define stock_lv_timer_handler FW_FN(0x00DB0408, uint32_t, (void))
+#define stock_disp_flush       FW_FN(0x00811754, void, (void *drv, const lv_area_t *area, const uint16_t *color_p))
+#define stock_key_cb           FW_FN(0x00D53184, void, (uint32_t *key_val))
 
 static inline void lv_indev_read_point(void *indev, int16_t *x, int16_t *y)
 {
@@ -241,12 +253,40 @@ static inline int32_t lv_bar_get_max_fast(lv_obj_t *bar)
 #define fw_dev_write   FW_FN(0x00DBAACE, int, (void *node, const void *buf, uint32_t count, const void *arg))
 #define FW_AUDIO_PA_CB 0x00D6BE99u
 
+#define fw_is_ram(p) ((uintptr_t)(p) >= 0x00800000u && (uintptr_t)(p) < 0x00900000u)
+#define fw_os_calloc   FW_FN(0x00D4E200, void *, (uint32_t n, uint32_t size))
+#define fw_os_free     FW_FN(0x00D4E244, void, (void *p))
 #define fw_os_sleep    FW_FN(0x00D4E2A4, void, (uint32_t ms))
 #define fw_task_create FW_FN(0x00D4E494, void *, (void (*entry)(void *), void *arg, const char *name, int prio, uint32_t stack))
 #define fw_watchdog_setup FW_FN(0x00D9DD10, void, (uint32_t a, uint32_t b, uint32_t c, uint32_t d))
 
-/* Reserved Cortex-M vector slot in RAM used as lock-free CPU1 -> CPU0 click trigger */
-#define CLICK_SEQ (*(volatile uint32_t *)0x0080001Cu)
+#define rom_tick_count FW_FN(0x0000A2B4, uint32_t, (void))
+#define FW_HEAP_FREE   (*(volatile const uint32_t *)0x00800C64u)
+
+/* FatFs R0.14b (CPU0 ONLY; verified in 240x320 yp3_2.0.43) */
+#define FA_READ          0x01u
+#define FA_WRITE         0x02u
+#define FA_CREATE_NEW    0x04u
+#define FA_CREATE_ALWAYS 0x08u
+typedef struct { uint64_t opaque[600 / 8]; } fw_file_t;
+typedef struct {
+    uint64_t size;
+    uint16_t date, time;
+    uint8_t  attrib;
+    char     altname[13];
+    char     name[256];
+} fw_fileinfo_t;
+#define fw_sd_mounted() (*(void *volatile const *)0x0081DE54u != NULL)
+#define f_open  FW_FN(0x00DCEEF8, int, (fw_file_t *fp, const char *path, uint8_t mode))
+#define f_close FW_FN(0x00DCF3C8, int, (fw_file_t *fp))
+#define f_write FW_FN(0x00DCE13E, int, (fw_file_t *fp, const void *buf, uint32_t n, uint32_t *done))
+#define f_lseek FW_FN(0x00DCE336, int, (fw_file_t *fp, uint64_t ofs))
+#define f_mkdir FW_FN(0x00DCF3FA, int, (const char *path))
+#define f_stat  FW_FN(0x00DCE8C6, int, (const char *path, fw_fileinfo_t *fno))
+
+/* Reserved Cortex-M vector slots in RAM used as lock-free CPU1 <-> CPU0 shared slots */
+#define CLICK_SEQ    (*(volatile uint32_t *)0x0080001Cu)
+#define SHOT_CTX_RAW (*(volatile uint32_t *)0x00800020u)
 
 /* ---------------------------------------------------------------- Vendor UI & Music Pages */
 #define FW_VIEW_CTX  (*(uint8_t **)0x0081D008u)

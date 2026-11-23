@@ -9,3 +9,4 @@ __pycache__/
 build/
 sdk/build/
 work/
+web/lvgl/

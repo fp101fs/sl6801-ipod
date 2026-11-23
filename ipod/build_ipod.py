@@ -33,6 +33,12 @@ HOOKS = [
     ("hook_music_artist_create", 0x00D7D586, 0x00D8A630),
     ("hook_music_album_create",  0x00D7D58C, 0x00D8A188),
     ("hook_cpu0_start",          0x00D4E866, 0x00D9DD10),
+    ("hook_lv_timer_handler",    0x00D4ECD4, 0x00DB0408),
+]
+
+LITERAL_HOOKS = [
+    ("hook_disp_flush",          0x00DB9A40, 0x00811755),
+    ("hook_key_cb",              0x00D52E04, 0x00D53185),
 ]
 
 
@@ -214,7 +220,11 @@ def main() -> None:
 
     run([*zig, "cc", *cflags, "-c", os.path.join(IPOD_DIR, "ipod_ui.c"), "-o", obj])
 
-    keep = [f"-Wl,-e,{HOOKS[0][0]}"] + [f"-Wl,-u,{name}" for name, _, _ in HOOKS[1:]]
+    keep = (
+        [f"-Wl,-e,{HOOKS[0][0]}"]
+        + [f"-Wl,-u,{name}" for name, _, _ in HOOKS[1:]]
+        + [f"-Wl,-u,{name}" for name, _, _ in LITERAL_HOOKS]
+    )
     run([
         *zig, "cc", *cflags, obj,
         "-nostdlib", "-static", "-Wl,--gc-sections",
@@ -236,7 +246,7 @@ def main() -> None:
     assert all(b == 0 for b in cave), "Target cave is NOT zero-filled!"
     patched[INJECT_OFF : INJECT_OFF + len(code)] = code
 
-    # Patch the 5 BL calls in view_page_create
+    # Patch the BL calls in firmware
     for sym, bl_vma, expect_vma in HOOKS:
         assert sym in syms, f"Missing symbol {sym}"
         target = syms[sym] & ~1
@@ -245,6 +255,16 @@ def main() -> None:
         assert actual == expect_vma, f"Unexpected BL at {hex(bl_vma)}: got {hex(actual)}, expected {hex(expect_vma)}"
         patched[file_off : file_off + 4] = encode_bl(bl_vma, target)
         print(f"  Hooked {sym}: BL at 0x{bl_vma:08x} (0x{expect_vma:08x} -> 0x{target:08x})")
+
+    # Patch literal-pool function pointers (Thumb bit 0 set)
+    for sym, lit_vma, expect_val in LITERAL_HOOKS:
+        assert sym in syms, f"Missing symbol {sym}"
+        target = syms[sym] | 1
+        file_off = lit_vma - FLASH_BASE
+        actual, = struct.unpack_from("<I", patched, file_off)
+        assert actual == expect_val, f"Unexpected literal at {hex(lit_vma)}: got {hex(actual)}, expected {hex(expect_val)}"
+        struct.pack_into("<I", patched, file_off, target)
+        print(f"  Hooked {sym}: literal at 0x{lit_vma:08x} (0x{expect_val:08x} -> 0x{target:08x})")
 
     # Apply Apple logo power-on splash & touch sensitivity patch
     apply_apple_splash(patched)

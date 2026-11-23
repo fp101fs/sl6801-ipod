@@ -1312,10 +1312,336 @@ static void click_audio_task(void *arg)
     }
 }
 
+/* ---------------------------------------------------------------- On-Device Screenshot & Recorder */
+enum {
+    SHOT_IDLE = 0,
+    SHOT_ARMED = 1,
+    SHOT_CAPTURING = 2,
+    SHOT_FINISHING = 3,
+};
+
+#define SHOT_BUF_ROWS 8
+#define SHOT_ROW_BYTES (SCR_W * 3u) /* 720 bytes (multiple of 4, no BMP padding) */
+#define SHOT_REC_MAX_FRAMES 200u
+
+typedef struct {
+    volatile uint32_t state;
+    volatile uint32_t strip_ready;
+    volatile uint32_t req_shot;
+    volatile uint32_t recording;
+    volatile int16_t  x1, y1, x2, y2;
+    const uint16_t *volatile pixels;
+
+    /* Key combo tracking (CPU0 key callback) */
+    uint8_t  last_kid;
+    uint32_t last_key_ms;
+    uint32_t last_pair_ms;
+
+    /* Capture bookkeeping (CPU0 ShotTask) */
+    uint32_t next_idx;
+    uint32_t rec_frames;
+    bool     dir_ready;
+
+    fw_file_t     file;
+    fw_fileinfo_t fno;
+    uint8_t       bgr_buf[SHOT_BUF_ROWS * SHOT_ROW_BYTES];
+} shot_ctx_t;
+
+static inline shot_ctx_t *get_shot_ctx(void)
+{
+    uint32_t raw = SHOT_CTX_RAW;
+    return fw_is_ram((void *)(uintptr_t)raw) ? (shot_ctx_t *)(uintptr_t)raw : NULL;
+}
+
+static void put_le16(uint8_t *p, uint16_t v)
+{
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+
+static void put_le32(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
+static void build_bmp_header(uint8_t hdr[54])
+{
+    const uint32_t img_bytes = (uint32_t)SCR_W * (uint32_t)SCR_H * 3u;
+    const uint32_t file_bytes = 54u + img_bytes;
+    rom_memset(hdr, 0, 54u);
+    hdr[0] = 'B';
+    hdr[1] = 'M';
+    put_le32(hdr + 2, file_bytes);
+    put_le32(hdr + 10, 54u);               /* pixel data offset */
+    put_le32(hdr + 14, 40u);               /* BITMAPINFOHEADER size */
+    put_le32(hdr + 18, (uint32_t)SCR_W);   /* width = 240 */
+    put_le32(hdr + 22, (uint32_t)(-SCR_H));/* top-down height = -320 */
+    put_le16(hdr + 26, 1u);                /* planes */
+    put_le16(hdr + 28, 24u);               /* 24-bit BGR */
+    put_le32(hdr + 30, 0u);                /* BI_RGB (uncompressed) */
+    put_le32(hdr + 34, img_bytes);
+    put_le32(hdr + 38, 2835u);             /* 72 DPI */
+    put_le32(hdr + 42, 2835u);
+}
+
+static void fmt_shot_path(char *dst, const char *prefix, uint32_t idx)
+{
+    /* "0:/shots/" + prefix + 4-digit index + ".bmp" */
+    static const char dir[] = "0:/shots/";
+    size_t p = 0;
+    for (size_t i = 0; dir[i]; i++) dst[p++] = dir[i];
+    for (size_t i = 0; prefix[i]; i++) dst[p++] = prefix[i];
+    fmt_u32(dst + p, idx, 4);
+    p += rom_strlen(dst + p);
+    dst[p++] = '.';
+    dst[p++] = 'b';
+    dst[p++] = 'm';
+    dst[p++] = 'p';
+    dst[p] = '\0';
+}
+
+static void rgb565_swap_to_bgr24(uint8_t *dst, const uint16_t *src, int count)
+{
+    for (int i = 0; i < count; i++) {
+        uint16_t raw = src[i];
+        uint16_t v = (uint16_t)((raw >> 8) | (raw << 8));
+        uint8_t r = (uint8_t)((v >> 8) & 0xF8u);
+        uint8_t g = (uint8_t)((v >> 3) & 0xFCu);
+        uint8_t b = (uint8_t)((v << 3) & 0xF8u);
+        r |= (uint8_t)(r >> 5);
+        g |= (uint8_t)(g >> 6);
+        b |= (uint8_t)(b >> 5);
+        dst[i * 3 + 0] = b;
+        dst[i * 3 + 1] = g;
+        dst[i * 3 + 2] = r;
+    }
+}
+
+static void shot_write_strip(shot_ctx_t *ctx)
+{
+    int x1 = ctx->x1, y1 = ctx->y1, x2 = ctx->x2, y2 = ctx->y2;
+    const uint16_t *px = ctx->pixels;
+    if (!px || x1 > x2 || y1 > y2) return;
+    int src_w = x2 - x1 + 1;
+    if (x2 < 0 || y2 < 0 || x1 >= SCR_W || y1 >= SCR_H) return;
+
+    int cx1 = x1 < 0 ? 0 : x1;
+    int cy1 = y1 < 0 ? 0 : y1;
+    int cx2 = x2 >= SCR_W ? SCR_W - 1 : x2;
+    int cy2 = y2 >= SCR_H ? SCR_H - 1 : y2;
+    int cw = cx2 - cx1 + 1;
+    uint32_t bw = 0;
+
+    if (cx1 == 0 && cx2 == SCR_W - 1 && src_w == SCR_W) {
+        /* Fast path: full-width horizontal band */
+        if (f_lseek(&ctx->file, 54u + (uint64_t)cy1 * SHOT_ROW_BYTES) != 0) return;
+        int y = cy1;
+        while (y <= cy2) {
+            int batch = cy2 - y + 1;
+            if (batch > SHOT_BUF_ROWS) batch = SHOT_BUF_ROWS;
+            const uint16_t *src = px + (y - y1) * src_w;
+            rgb565_swap_to_bgr24(ctx->bgr_buf, src, batch * SCR_W);
+            if (f_write(&ctx->file, ctx->bgr_buf, (uint32_t)batch * SHOT_ROW_BYTES, &bw) != 0) return;
+            y += batch;
+        }
+    } else {
+        /* Partial rect fallback: write clipped row slices at exact BMP offsets */
+        for (int y = cy1; y <= cy2; y++) {
+            uint64_t ofs = 54u + (uint64_t)y * SHOT_ROW_BYTES + (uint64_t)cx1 * 3u;
+            if (f_lseek(&ctx->file, ofs) != 0) return;
+            const uint16_t *src = px + (y - y1) * src_w + (cx1 - x1);
+            rgb565_swap_to_bgr24(ctx->bgr_buf, src, cw);
+            if (f_write(&ctx->file, ctx->bgr_buf, (uint32_t)cw * 3u, &bw) != 0) return;
+        }
+    }
+}
+
+static void shot_task(void *arg)
+{
+    shot_ctx_t *ctx = (shot_ctx_t *)arg;
+    uint8_t bmp_hdr[54];
+    char path[36];
+    build_bmp_header(bmp_hdr);
+
+    for (;;) {
+        if (!ctx->req_shot && !ctx->recording) {
+            fw_os_sleep(20);
+            continue;
+        }
+        bool is_rec = (ctx->recording != 0u);
+        ctx->req_shot = 0u;
+
+        if (!fw_sd_mounted() || FW_HEAP_FREE < 0x4000u) {
+            ctx->recording = 0u;
+            fw_os_sleep(200);
+            continue;
+        }
+
+        if (!ctx->dir_ready) {
+            f_mkdir("0:/shots");
+            ctx->dir_ready = true;
+            if (ctx->next_idx == 0u) ctx->next_idx = 1u;
+        }
+
+        /* Find next unused filename so previous captures are never overwritten */
+        const char *pfx = is_rec ? "rec_" : "shot_";
+        while (ctx->next_idx < 9999u) {
+            fmt_shot_path(path, pfx, ctx->next_idx);
+            if (f_stat(path, &ctx->fno) != 0) break;
+            ctx->next_idx++;
+        }
+
+        if (f_open(&ctx->file, path, FA_WRITE | FA_CREATE_ALWAYS) != 0) {
+            ctx->recording = 0u;
+            ctx->dir_ready = false;
+            fw_os_sleep(200);
+            continue;
+        }
+
+        uint32_t bw = 0;
+        if (f_write(&ctx->file, bmp_hdr, sizeof(bmp_hdr), &bw) != 0 || bw != sizeof(bmp_hdr)) {
+            f_close(&ctx->file);
+            ctx->recording = 0u;
+            continue;
+        }
+
+        /* Arm CPU1 to force a full-screen redraw and stream every flushed strip */
+        ctx->strip_ready = 0u;
+        __sync_synchronize();
+        ctx->state = SHOT_ARMED;
+
+        uint32_t t0 = rom_tick_count();
+        while ((rom_tick_count() - t0) < 2500u) {
+            if (ctx->strip_ready) {
+                __sync_synchronize();
+                shot_write_strip(ctx);
+                __sync_synchronize();
+                ctx->strip_ready = 0u;
+            } else if (ctx->state == SHOT_FINISHING) {
+                break;
+            } else {
+                fw_os_sleep(1);
+            }
+        }
+
+        ctx->state = SHOT_IDLE;
+        ctx->strip_ready = 0u;
+        __sync_synchronize();
+        f_close(&ctx->file);
+        ctx->next_idx++;
+
+        if (is_rec) {
+            ctx->rec_frames++;
+            if (ctx->rec_frames >= SHOT_REC_MAX_FRAMES) {
+                ctx->recording = 0u;
+                ctx->rec_frames = 0u;
+            } else {
+                /* Small breather so UI touch & audio stay responsive (~3-5 FPS) */
+                fw_os_sleep(40);
+            }
+        } else {
+            /* Subtle shutter-click audio confirmation (only if music isn't playing) */
+            if (!dev_is_busy("/dev/audio0")) {
+                uint32_t s = CLICK_SEQ;
+                CLICK_SEQ = (s >= 0xFFFFFFF0u) ? 1u : (s + 1u);
+            }
+            fw_os_sleep(100);
+        }
+    }
+}
+
+/* CPU0 key callback hook:
+ *   - Quick Vol+ then Vol- (or Vol- then Vol+) within 450ms -> single screenshot (or stop recording)
+ *   - 3rd quick alternating tap within 600ms -> start continuous recording (~3-5 FPS) */
+__attribute__((used)) void hook_key_cb(uint32_t *key_val)
+{
+    shot_ctx_t *ctx = get_shot_ctx();
+    if (ctx && key_val) {
+        uint32_t raw = *key_val & 0x7FFFFFFFu;
+        if (raw > 4u) {
+            uint8_t kid = (uint8_t)(raw & 0xFFu);
+            uint8_t kev = (uint8_t)((raw >> 16) & 0xFFu);
+            if (kev == 0x10u) {
+                uint32_t now = rom_tick_count();
+                if (ctx->last_pair_ms != 0u && (now - ctx->last_pair_ms) <= 600u && kid != ctx->last_kid) {
+                    /* 3rd alternating tap -> start continuous recording */
+                    ctx->recording = 1u;
+                    ctx->rec_frames = 0u;
+                    ctx->last_pair_ms = 0u;
+                    ctx->last_kid = 0u;
+                } else if (ctx->last_kid != 0u && kid != ctx->last_kid && (now - ctx->last_key_ms) <= 450u) {
+                    /* 2nd alternating tap -> stop recording if active, else take 1 screenshot */
+                    if (ctx->recording) {
+                        ctx->recording = 0u;
+                        ctx->last_pair_ms = 0u;
+                    } else {
+                        ctx->req_shot = 1u;
+                        ctx->last_pair_ms = now;
+                    }
+                    ctx->last_kid = kid;
+                    ctx->last_key_ms = now;
+                } else {
+                    ctx->last_kid = kid;
+                    ctx->last_key_ms = now;
+                }
+            }
+        }
+    }
+    stock_key_cb(key_val);
+}
+
+/* CPU1 LVGL timer handler hook: triggers full-screen redraw when armed */
+__attribute__((used)) uint32_t hook_lv_timer_handler(void)
+{
+    shot_ctx_t *ctx = get_shot_ctx();
+    if (ctx && ctx->state == SHOT_ARMED) {
+        ctx->state = SHOT_CAPTURING;
+        __sync_synchronize();
+        lv_obj_t *scr = lv_disp_get_scr_act(NULL);
+        if (scr) lv_obj_invalidate(scr);
+        lv_obj_t *top = lv_disp_get_layer_top(NULL);
+        if (top) lv_obj_invalidate(top);
+        uint32_t ret = stock_lv_timer_handler();
+        __sync_synchronize();
+        ctx->state = SHOT_FINISHING;
+        return ret;
+    }
+    return stock_lv_timer_handler();
+}
+
+/* CPU1 LVGL flush_cb hook: hands each RGB565 strip to CPU0 ShotTask during capture */
+__attribute__((used)) void hook_disp_flush(void *drv, const lv_area_t *area, const uint16_t *color_p)
+{
+    shot_ctx_t *ctx = get_shot_ctx();
+    if (ctx && ctx->state == SHOT_CAPTURING && area && color_p) {
+        ctx->x1 = area->x1;
+        ctx->y1 = area->y1;
+        ctx->x2 = area->x2;
+        ctx->y2 = area->y2;
+        ctx->pixels = color_p;
+        __sync_synchronize();
+        ctx->strip_ready = 1u;
+        uint32_t t0 = lv_tick_get();
+        while (ctx->strip_ready && (lv_tick_get() - t0) < 600u) {
+            __asm volatile("nop");
+        }
+    }
+    stock_disp_flush(drv, area, color_p);
+}
+
 __attribute__((used)) void hook_cpu0_start(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 {
     fw_watchdog_setup(a, b, c, d);
     CLICK_SEQ = CLICK_IDLE_MAGIC;
+    SHOT_CTX_RAW = 0u;
     /* 0x280 words (2.5 KB) stack leaves extra CPU0 FreeRTOS heap headroom for FLAC decoding */
     fw_task_create(click_audio_task, NULL, "ClickTask", 6, 0x280);
+    shot_ctx_t *sctx = (shot_ctx_t *)fw_os_calloc(1u, sizeof(shot_ctx_t));
+    if (fw_is_ram(sctx)) {
+        SHOT_CTX_RAW = (uint32_t)(uintptr_t)sctx;
+        fw_task_create(shot_task, sctx, "ShotTask", 5, 0x300);
+    }
 }

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>SL6801 iPod Classic — Live LVGL 8.3 WebAssembly Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f17;
+      --card: #131a26;
+      --border: #253044;
+      --text: #e6edf5;
+      --muted: #8b9bb4;
+      --accent: #4a92d4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 24px 16px;
+      background: radial-gradient(circle at top, #17243a 0%, var(--bg) 60%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    header { text-align: center; max-width: 560px; }
+    h1 { margin: 0 0 6px; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; }
+    p.sub { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+
+    .device-frame {
+      padding: 14px;
+      border-radius: 26px;
+      background: linear-gradient(145deg, #273347, #111722);
+      border: 1px solid #33435e;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    canvas#screen {
+      display: block;
+      width: 300px;
+      height: 400px;
+      border-radius: 14px;
+      image-rendering: pixelated;
+      cursor: pointer;
+      touch-action: none;
+      background: #000;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);
+    }
+    @media (min-width: 520px) {
+      canvas#screen { width: 336px; height: 448px; }
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      max-width: 560px;
+    }
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, transform 0.08s;
+    }
+    button:hover { background: #1b2436; border-color: #3a4c6b; }
+    button:active { transform: translateY(1px); }
+    button.primary { border-color: var(--accent); background: rgba(74, 146, 212, 0.18); }
+    button.recording { border-color: #e5534b; background: rgba(229, 83, 75, 0.25); color: #ffb3ad; }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      max-width: 480px;
+      line-height: 1.5;
+    }
+    .hint a { color: #7bb8f5; text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
+    #status { font-size: 0.78rem; color: var(--muted); min-height: 1.1em; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SL6801 iPod Classic — Live LVGL 8.3 WASM</h1>
+    <p class="sub">
+      The actual <code>ipod_ui.c</code> firmware UI compiled with Emscripten + LVGL 8.3.
+      Drag circularly on the Click Wheel to scroll, tap center/quadrants, or tap rows directly.
+    </p>
+  </header>
+
+  <div class="device-frame">
+    <canvas id="screen" width="240" height="320"></canvas>
+  </div>
+
+  <div class="controls">
+    <button onclick="navPage(2)">Music</button>
+    <button onclick="navPage(3)">Songs</button>
+    <button onclick="navPage(6)">Artists</button>
+    <button onclick="navPage(7)">Albums</button>
+    <button onclick="navPage(4)">Now Playing</button>
+  </div>
+
+  <div class="controls">
+    <button class="primary" onclick="takeScreenshot()">Screenshot (PNG)</button>
+    <button id="recBtn" onclick="toggleRecord()">Record Video (WebM)</button>
+    <button id="muteBtn" onclick="toggleMute()">Click Sound: On</button>
+  </div>
+
+  <div id="status">Loading WebAssembly…</div>
+
+  <div class="hint">
+    Runs 100% locally in your browser at 60 FPS (240&times;320 RGB565).
+    Source: <a href="https://github.com/fp101fs/sl6801-ipod" target="_blank" rel="noopener">github.com/fp101fs/sl6801-ipod</a>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('screen');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const imgData = ctx.createImageData(240, 320);
+    const statusEl = document.getElementById('status');
+
+    let fbPtr = 0;
+    let audioCtx = null;
+    let muted = false;
+    let mediaRecorder = null;
+    let recChunks = [];
+
+    window.playIpodClick = function () {
+      if (muted) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1650, now);
+        osc.frequency.exponentialRampToValueAtTime(320, now + 0.011);
+        gain.gain.setValueAtTime(0.16, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.013);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.014);
+      } catch (_) {}
+    };
+
+    window.presentIpodFrame = function () {
+      if (!fbPtr || !Module.HEAPU8) return;
+      imgData.data.set(Module.HEAPU8.subarray(fbPtr, fbPtr + 240 * 320 * 4));
+      ctx.putImageData(imgData, 0, 0);
+    };
+
+    function sendPointer(e, pressed) {
+      if (!Module._web_pointer_event) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.round(((e.clientX - rect.left) / rect.width) * 240);
+      const y = Math.round(((e.clientY - rect.top) / rect.height) * 320);
+      Module._web_pointer_event(x, y, pressed ? 1 : 0);
+    }
+
+    let isDown = false;
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      isDown = true;
+      sendPointer(e, true);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (isDown) sendPointer(e, true);
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      isDown = false;
+      sendPointer(e, false);
+    });
+    canvas.addEventListener('pointercancel', (e) => {
+      isDown = false;
+      sendPointer(e, false);
+    });
+
+    function navPage(id) {
+      if (Module._web_nav_page) Module._web_nav_page(id);
+    }
+
+    function takeScreenshot() {
+      const a = document.createElement('a');
+      a.download = `sl6801-ipod-${Date.now()}.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+      statusEl.textContent = 'Saved PNG screenshot.';
+    }
+
+    function toggleRecord() {
+      const btn = document.getElementById('recBtn');
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        btn.classList.remove('recording');
+        btn.textContent = 'Record Video (WebM)';
+        statusEl.textContent = 'Saved WebM screen recording.';
+        return;
+      }
+      if (!canvas.captureStream || !window.MediaRecorder) {
+        statusEl.textContent = 'MediaRecorder not supported in this browser.';
+        return;
+      }
+      recChunks = [];
+      const stream = canvas.captureStream(60);
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      mediaRecorder.ondataavailable = (ev) => { if (ev.data.size) recChunks.push(ev.data); };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.download = `sl6801-ipod-${Date.now()}.webm`;
+        a.href = url;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      };
+      mediaRecorder.start();
+      btn.classList.add('recording');
+      btn.textContent = 'Stop Recording';
+      statusEl.textContent = 'Recording 60 FPS WebM…';
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      document.getElementById('muteBtn').textContent = muted ? 'Click Sound: Off' : 'Click Sound: On';
+    }
+
+    var Module = {
+      onRuntimeInitialized: function () {
+        fbPtr = Module._web_get_fb();
+        statusEl.textContent = 'Ready — spin the Click Wheel!';
+      }
+    };
+  </script>
+  <script async src="ipod_wasm.js"></script>
+</body>
+</html>
