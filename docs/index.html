@@ -252,12 +252,27 @@
       .prep-grid { grid-template-columns: 1fr 1fr; }
     }
     .prep-item {
-      padding: 15px 18px;
+      position: relative;
+      padding: 15px 46px 15px 18px;
       border-radius: 16px;
       background: var(--bg-light);
       font-size: 13.5px;
       line-height: 1.5;
       color: var(--ink-muted);
+    }
+    .prep-icon {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      font-size: 28px;
+      line-height: 1;
+      user-select: none;
+    }
+    .prep-note {
+      margin-top: 8px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      line-height: 1.45;
     }
     .prep-item strong {
       display: block;
@@ -548,14 +563,19 @@
     <div class="install-card">
       <div class="prep-grid">
         <div class="prep-item">
+          <span class="prep-icon" aria-hidden="true">🥾</span>
           <strong>Enter Bootloader Mode (301a:2800)</strong>
           <ul class="prep-list">
-            <li>Power off completely (unplug USB-C)</li>
+            <li>Unplug USB-C</li>
+            <li>Power off completely</li>
             <li>Hold <b>Volume Up (+)</b></li>
             <li>Plug in USB-C</li>
+            <li>Wait a few seconds</li>
           </ul>
+          <p class="prep-note">(the screen will stay powered off — if you want to check if it's connected, ask your CLI AI agent!)</p>
         </div>
         <div class="prep-item">
+          <span class="prep-icon" aria-hidden="true">⚡</span>
           <strong>Reboot After Flashing</strong>
           <ul class="prep-list">
             <li>Unplug USB-C</li>
@@ -566,7 +586,7 @@
       </div>
 
       <div class="tabs" role="tablist">
-        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">💻 A. CLI &amp; Download</button>
+        <button class="tab active" role="tab" aria-selected="true" onclick="selectTabByIndex(0)">⬇️ A. CLI &amp; Download</button>
         <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(1)">🔌 B. Web Bridge</button>
         <button class="tab" role="tab" aria-selected="false" onclick="selectTabByIndex(2)">🤖 C. LLM Prompt</button>
       </div>
@@ -574,7 +594,7 @@
       <!-- Method A -->
       <div class="pane pane-a active" id="pane-0">
         <ol class="step-ol">
-          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see above)</i>.</li>
+          <li>Put SL6801 into 🥾 <b>Bootloader mode</b> <i>(see above)</i>.</li>
           <li>
             Clone the repository, back up your stock 2 MB flash, and flash <code>sl6801_ipod.bin</code>:
             <div class="code-wrap">
@@ -593,14 +613,14 @@ sudo ./scripts/flash_ipod.sh</pre>
               <code>smtlink_dump.exe init write_flash 0 0 0 firmware/sl6801_ipod.bin</code>.
             </div>
           </li>
-          <li><b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
+          <li>⚡ <b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
         </ol>
       </div>
 
       <!-- Method B -->
       <div class="pane pane-b" id="pane-1">
         <ol class="step-ol">
-          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see above)</i>.</li>
+          <li>Put SL6801 into 🥾 <b>Bootloader mode</b> <i>(see above)</i>.</li>
           <li>
             Start the tiny local bridge in Terminal <span style="color:var(--ink-muted);">(browsers block direct WebUSB on Mass Storage <code>0x08</code> bootloaders)</span>:
             <div class="code-wrap">
@@ -625,14 +645,14 @@ sudo ./scripts/flash_ipod.sh</pre>
             </div>
             <pre id="bridgeLog">Waiting for local bridge on http://127.0.0.1:8765…</pre>
           </li>
-          <li><b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
+          <li>⚡ <b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
         </ol>
       </div>
 
       <!-- Method C -->
       <div class="pane pane-c" id="pane-2">
         <ol class="step-ol">
-          <li>Put SL6801 into <b>Bootloader mode</b> <i>(see above)</i>.</li>
+          <li>Put SL6801 into 🥾 <b>Bootloader mode</b> <i>(see above)</i>.</li>
           <li>
             Paste this concise prompt into Claude Code, Antigravity, Cursor, or Codex:
             <div class="code-wrap">
@@ -643,7 +663,7 @@ sudo ./scripts/flash_ipod.sh</pre>
               Note: On macOS &amp; Linux, <code>smtlink_dump</code> needs <code>sudo</code> to detach the OS mass-storage driver.
             </div>
           </li>
-          <li><b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
+          <li>⚡ <b>Reboot</b> your SL6801 <i>(see above)</i>.</li>
         </ol>
       </div>
     </div>
@@ -808,7 +828,7 @@ sudo ./scripts/flash_ipod.sh</pre>
         if (d.connected) {
           setBridgeUI('ok', 'SL6801 connected (301a:2800)', true);
         } else {
-          setBridgeUI('warn', 'Bridge online — plug SL6801 in bootloader mode', true);
+          setBridgeUI('warn', 'Bridge online — plug SL6801 in 🥾 bootloader mode', true);
         }
       } catch (_) {
         setBridgeUI('', 'Bridge offline', false);
