@@ -6,6 +6,10 @@ Custom **60 FPS iPod *SL*** firmware for the *Smartlink SL6801* player.
 
 ### iPod *SL* Demo (Actual)
 
+https://github.com/user-attachments/assets/adeb2177-676e-4930-a5d6-ce77f8baf884
+
+### iPod *SL* Demo (Screen recording)
+
 https://github.com/user-attachments/assets/bd0a3d29-6547-45a0-a65a-7719ba6d9e52
 
 ### Screenshots
