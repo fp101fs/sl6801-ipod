@@ -2,6 +2,8 @@
 
 Custom **60 FPS iPod *SL*** firmware for the *Smartlink SL6801* player.
 
+tl;dr - For quick install, go here: [iPod SL Quick Setup](https://fp101fs.github.io/sl6801-ipod/))
+
 **[Try the Live Interactive WebAssembly Demo & Flasher →](https://fp101fs.github.io/sl6801-ipod/)**
 
 ### iPod *SL* Demo (Actual)
@@ -24,6 +26,11 @@ Includes reverse-engineering notes, flash tools, touch fixes, and an interactive
 
 ---
 
+## How to Install
+
+For quick install, go here: [iPod SL Quick Setup](https://fp101fs.github.io/sl6801-ipod/))
+
+
 ## What It Does
 
 - **60 FPS UI**: <mark>Replaces all 5 music screens</mark> with an iPod shell.
@@ -43,6 +50,8 @@ Includes reverse-engineering notes, flash tools, touch fixes, and an interactive
 - **Audio & Storage**: Speaker, 3.5 mm jack, Bluetooth Classic, FM radio, microSD.
 
 ## Quick Start
+
+tl;dr - For quick install, go here: [iPod SL Quick Setup](https://fp101fs.github.io/sl6801-ipod/))
 
 <u>Back up your stock firmware</u> before flashing anything.
 
